@@ -15,6 +15,29 @@ from services.parser import DocxParser
 from services.diff_engine import DiffEngine
 from services.validator import RuleValidator
 
+
+def _decode_filename(name: str) -> str:
+    """Fix filenames sent with incorrect encoding by the HTTP client.
+
+    Some clients (curl, certain browsers) send non-ASCII filenames as raw
+    bytes without proper RFC 5987 encoding. FastAPI/Starlette interprets
+    these bytes as latin-1 characters, producing garbled text.
+    """
+    try:
+        raw = name.encode("latin-1")
+    except UnicodeEncodeError:
+        return name
+    # Try GBK first (common on Windows/Chinese systems), then UTF-8
+    for enc in ("gbk", "utf-8"):
+        try:
+            decoded = raw.decode(enc)
+            if decoded != name:
+                return decoded
+        except UnicodeDecodeError:
+            continue
+    return name
+from services.validator import RuleValidator
+
 app = FastAPI(title="格式合同智能审查系统 Demo")
 
 app.add_middleware(
@@ -40,7 +63,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 async def upload_template(file: UploadFile = File(...)):
     if not file.filename.endswith(".docx"):
         raise HTTPException(400, "只支持 .docx 文件")
-    safe_name = f"{uuid.uuid4().hex}_{file.filename}"
+    filename = _decode_filename(file.filename)
+    safe_name = f"{uuid.uuid4().hex}_{filename}"
     file_path = os.path.join(UPLOAD_DIR, safe_name)
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
@@ -49,7 +73,7 @@ async def upload_template(file: UploadFile = File(...)):
         paragraphs = DocxParser.parse(file_path)
         cur = conn.execute(
             "INSERT INTO templates (name, file_path, paragraph_count) VALUES (?, ?, ?)",
-            (file.filename, file_path, len(paragraphs))
+            (filename, file_path, len(paragraphs))
         )
         conn.commit()
         template_id = cur.lastrowid
@@ -57,7 +81,7 @@ async def upload_template(file: UploadFile = File(...)):
         conn.close()
     return TemplateResponse(
         id=template_id,
-        name=file.filename,
+        name=filename,
         paragraph_count=len(paragraphs),
         created_at=""
     )
@@ -146,7 +170,8 @@ async def proxy_template_file(template_id: int):
 async def upload_document(file: UploadFile = File(...), template_id: int = Query(...)):
     if not file.filename.endswith(".docx"):
         raise HTTPException(400, "只支持 .docx 文件")
-    safe_name = f"doc_{uuid.uuid4().hex}_{file.filename}"
+    filename = _decode_filename(file.filename)
+    safe_name = f"doc_{uuid.uuid4().hex}_{filename}"
     file_path = os.path.join(UPLOAD_DIR, safe_name)
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
@@ -155,7 +180,7 @@ async def upload_document(file: UploadFile = File(...), template_id: int = Query
         paragraphs = DocxParser.parse(file_path)
         cur = conn.execute(
             "INSERT INTO documents (template_id, name, file_path) VALUES (?, ?, ?)",
-            (template_id, file.filename, file_path)
+            (template_id, filename, file_path)
         )
         conn.commit()
         doc_id = cur.lastrowid
@@ -163,7 +188,7 @@ async def upload_document(file: UploadFile = File(...), template_id: int = Query
         conn.close()
     return DocumentResponse(
         id=doc_id,
-        name=file.filename,
+        name=filename,
         template_id=template_id,
         paragraphs=[ParagraphInfo(index=p["index"], text=p["text"]) for p in paragraphs],
         uploaded_at=""
