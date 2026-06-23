@@ -54,5 +54,9 @@ def init_db():
             FOREIGN KEY (document_id) REFERENCES documents(id)
         );
     """)
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_annotations_template_para
+        ON annotations(template_id, paragraph_index)
+    """)
     conn.commit()
     conn.close()

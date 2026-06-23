@@ -87,33 +87,41 @@ def get_template(template_id: int):
 @app.post("/api/templates/{template_id}/annotations")
 def save_annotations(template_id: int, body: AnnotationBatch):
     conn = get_connection()
-    conn.execute("DELETE FROM annotations WHERE template_id = ?", (template_id,))
-    for ann in body.annotations:
-        rules_json = "{}"
-        if ann.zone_type == "fillable" and ann.rules:
-            rules_json = ann.rules.model_dump_json()
-        conn.execute(
-            "INSERT INTO annotations (template_id, paragraph_index, zone_type, rules) VALUES (?, ?, ?, ?)",
-            (template_id, ann.paragraph_index, ann.zone_type, rules_json)
-        )
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("BEGIN")
+        conn.execute("DELETE FROM annotations WHERE template_id = ?", (template_id,))
+        for ann in body.annotations:
+            rules_json = "{}"
+            if ann.zone_type == "fillable" and ann.rules:
+                rules_json = ann.rules.model_dump_json()
+            conn.execute(
+                "INSERT INTO annotations (template_id, paragraph_index, zone_type, rules) VALUES (?, ?, ?, ?)",
+                (template_id, ann.paragraph_index, ann.zone_type, rules_json)
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     return {"ok": True, "count": len(body.annotations)}
 
 
 @app.get("/api/templates/{template_id}/annotations")
 def get_annotations(template_id: int):
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT paragraph_index, zone_type, rules FROM annotations WHERE template_id = ? ORDER BY paragraph_index",
-        (template_id,)
-    ).fetchall()
-    conn.close()
-    return [
-        {
-            "paragraph_index": r["paragraph_index"],
-            "zone_type": r["zone_type"],
-            "rules": r["rules"] if r["rules"] else "{}"
-        }
-        for r in rows
-    ]
+    try:
+        rows = conn.execute(
+            "SELECT paragraph_index, zone_type, rules FROM annotations WHERE template_id = ? ORDER BY paragraph_index",
+            (template_id,)
+        ).fetchall()
+        return [
+            {
+                "paragraph_index": r["paragraph_index"],
+                "zone_type": r["zone_type"],
+                "rules": r["rules"] if r["rules"] else "{}"
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
