@@ -31,6 +31,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             template_id INTEGER NOT NULL,
             paragraph_index INTEGER NOT NULL,
+            start_char INTEGER DEFAULT 0,
+            end_char INTEGER DEFAULT 0,
             zone_type TEXT NOT NULL CHECK(zone_type IN ('fixed','fillable')),
             rules TEXT DEFAULT '{}',
             FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
@@ -54,9 +56,20 @@ def init_db():
             FOREIGN KEY (document_id) REFERENCES documents(id)
         );
     """)
+    # Migration: add start_char/end_char columns for character-range annotations
+    try:
+        conn.execute("ALTER TABLE annotations ADD COLUMN start_char INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE annotations ADD COLUMN end_char INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    # Replace old unique index with char-range aware one
+    conn.execute("DROP INDEX IF EXISTS idx_annotations_template_para")
     conn.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_annotations_template_para
-        ON annotations(template_id, paragraph_index)
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_annotations_template_para_range
+        ON annotations(template_id, paragraph_index, start_char)
     """)
     conn.commit()
     conn.close()

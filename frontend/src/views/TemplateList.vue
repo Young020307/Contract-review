@@ -1,50 +1,57 @@
 <template>
-  <div class="template-page">
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>模板管理</span>
-          <el-upload :show-file-list="false" :before-upload="handleUpload" accept=".docx">
-            <el-button type="primary">上传模板</el-button>
-          </el-upload>
-        </div>
-      </template>
-      <el-table :data="templates" stripe>
-        <el-table-column prop="id" label="ID" width="60" />
+  <div class="tpl-page">
+    <div class="page-head">
+      <h2 class="page-title">模板管理</h2>
+      <el-upload :show-file-list="false" :before-upload="handleUpload" accept=".docx">
+        <el-button type="primary" size="large">上传模板</el-button>
+      </el-upload>
+    </div>
+
+    <div class="table-card">
+      <el-table :data="templates" stripe highlight-current-row>
+        <el-table-column prop="id" label="ID" width="64" />
         <el-table-column prop="name" label="模板名称" />
-        <el-table-column prop="paragraph_count" label="段落数" width="100" />
-        <el-table-column prop="created_at" label="上传时间" width="180" />
-        <el-table-column label="状态" width="120">
+        <el-table-column prop="paragraph_count" label="段落数" width="88" align="center" />
+        <el-table-column prop="created_at" label="上传时间" width="176" />
+        <el-table-column label="状态" width="96" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.annotated ? 'success' : 'warning'">
+            <el-tag :type="row.annotated ? 'success' : 'warning'" size="small">
               {{ row.annotated ? '已标注' : '未标注' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150">
+        <el-table-column label="操作" width="180">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="$router.push(`/annotate/${row.id}`)">
+            <el-button size="small" @click="$router.push(`/annotate/${row.id}`)">
               标注
             </el-button>
+            <el-popconfirm
+              title="确定删除该模板？相关标注和文档也将被删除"
+              confirm-button-text="删除"
+              cancel-button-text="取消"
+              @confirm="handleDelete(row.id)"
+            >
+              <template #reference>
+                <el-button type="danger" size="small" plain>删除</el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listTemplates, uploadTemplate, getAnnotations } from '../api'
+import { listTemplates, uploadTemplate, getAnnotations, deleteTemplate } from '../api'
 import type { TemplateInfo } from '../types'
 
 interface TemplateRow extends TemplateInfo { annotated: boolean }
 const templates = ref<TemplateRow[]>([])
 
-onMounted(async () => {
-  await loadTemplates()
-})
+onMounted(async () => { await loadTemplates() })
 
 async function loadTemplates() {
   const list = await listTemplates()
@@ -60,6 +67,12 @@ async function loadTemplates() {
   templates.value = enriched
 }
 
+async function handleDelete(id: number) {
+  await deleteTemplate(id)
+  ElMessage.success('模板已删除')
+  await loadTemplates()
+}
+
 async function handleUpload(file: File) {
   await uploadTemplate(file)
   ElMessage.success('模板上传成功')
@@ -69,5 +82,39 @@ async function handleUpload(file: File) {
 </script>
 
 <style scoped>
-.card-header { display: flex; align-items: center; justify-content: space-between; }
+.tpl-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-6) var(--space-8);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+
+.page-title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: .02em;
+}
+
+.table-card {
+  background: var(--paper-white);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.table-card :deep(.el-table) { border: none; }
+.table-card :deep(.el-table::before) { display: none; }
+.table-card :deep(.el-table__inner-wrapper::before) { display: none; }
 </style>

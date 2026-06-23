@@ -38,7 +38,7 @@ def _decode_filename(name: str) -> str:
     return name
 from services.validator import RuleValidator
 
-app = FastAPI(title="格式合同智能审查系统 Demo")
+app = FastAPI(title="合同智能审查系统 Demo")
 
 app.add_middleware(
     CORSMiddleware,
@@ -95,6 +95,28 @@ def list_templates():
     return [TemplateResponse(id=r["id"], name=r["name"], paragraph_count=r["paragraph_count"], created_at=r["created_at"] or "") for r in rows]
 
 
+@app.delete("/api/templates/{template_id}")
+def delete_template(template_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT id, file_path FROM templates WHERE id = ?", (template_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "模板不存在")
+        # Delete related records first (FKs without CASCADE)
+        conn.execute("DELETE FROM review_tasks WHERE template_id = ?", (template_id,))
+        conn.execute("DELETE FROM documents WHERE template_id = ?", (template_id,))
+        # Annotations have ON DELETE CASCADE, but delete explicitly for clarity
+        conn.execute("DELETE FROM annotations WHERE template_id = ?", (template_id,))
+        conn.execute("DELETE FROM templates WHERE id = ?", (template_id,))
+        conn.commit()
+        # Remove uploaded file
+        if os.path.exists(row["file_path"]):
+            os.remove(row["file_path"])
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
 @app.get("/api/templates/{template_id}", response_model=TemplateDetailResponse)
 def get_template(template_id: int):
     conn = get_connection()
@@ -124,8 +146,8 @@ def save_annotations(template_id: int, body: AnnotationBatch):
             if ann.zone_type == "fillable" and ann.rules:
                 rules_json = ann.rules.model_dump_json()
             conn.execute(
-                "INSERT INTO annotations (template_id, paragraph_index, zone_type, rules) VALUES (?, ?, ?, ?)",
-                (template_id, ann.paragraph_index, ann.zone_type, rules_json)
+                "INSERT INTO annotations (template_id, paragraph_index, start_char, end_char, zone_type, rules) VALUES (?, ?, ?, ?, ?, ?)",
+                (template_id, ann.paragraph_index, ann.start_char, ann.end_char, ann.zone_type, rules_json)
             )
         conn.commit()
     except Exception:
@@ -141,12 +163,14 @@ def get_annotations(template_id: int):
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT paragraph_index, zone_type, rules FROM annotations WHERE template_id = ? ORDER BY paragraph_index",
+            "SELECT paragraph_index, start_char, end_char, zone_type, rules FROM annotations WHERE template_id = ? ORDER BY paragraph_index, start_char",
             (template_id,)
         ).fetchall()
         return [
             {
                 "paragraph_index": r["paragraph_index"],
+                "start_char": r["start_char"],
+                "end_char": r["end_char"],
                 "zone_type": r["zone_type"],
                 "rules": r["rules"] if r["rules"] else "{}"
             }
@@ -226,21 +250,31 @@ def review_compare(body: ReviewRequest):
         if not template or not document:
             raise HTTPException(404, "模板或文件不存在")
 
-        # Get fixed paragraph indices from annotations
         annotations = conn.execute(
-            "SELECT paragraph_index FROM annotations WHERE template_id = ? AND zone_type = 'fixed'",
+            "SELECT paragraph_index, start_char, end_char, zone_type FROM annotations WHERE template_id = ?",
             (body.template_id,)
         ).fetchall()
-        fixed_indices = {a["paragraph_index"] for a in annotations}
+        ann_list = [dict(a) for a in annotations]
 
-        template_text = DocxParser.extract_fixed_text(template["file_path"], fixed_indices)
-        doc_text = DocxParser.extract_fixed_text(document["file_path"], fixed_indices)
+        template_text = DocxParser.extract_full_text(template["file_path"])
+        doc_text = DocxParser.extract_full_text(document["file_path"])
+
+        # Build global fillable zone ranges (in concatenated full text)
+        fillable_ranges = _build_global_ranges(template["file_path"], ann_list)
 
         result = DiffEngine.compare(template_text, doc_text)
         result["template_text"] = template_text
         result["document_text"] = doc_text
 
-        # Save review task
+        # Neutralize fillable zone diffs to "equal" (they are expected changes)
+        result["diffs"] = _neutralize_fillable_diffs(result["diffs"], fillable_ranges)
+
+        # Filter violations: exclude diffs that fall entirely within fillable zones
+        result["violations"] = [
+            v for v in result["violations"]
+            if not _is_fully_in_fillable(v, fillable_ranges)
+        ]
+
         conn.execute(
             "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'compare', ?)",
             (body.template_id, body.document_id, json.dumps(result, ensure_ascii=False))
@@ -249,6 +283,49 @@ def review_compare(body: ReviewRequest):
         return result
     finally:
         conn.close()
+
+
+def _build_global_ranges(file_path: str, ann_list: list[dict]) -> list[tuple[int, int]]:
+    """Compute global character ranges for fillable zones in concatenated full text."""
+    paras = DocxParser.parse(file_path)
+    offset = 0
+    ranges = []
+    for p in paras:
+        text = p["text"]
+        for a in ann_list:
+            if a["paragraph_index"] == p["index"] and a.get("zone_type") == "fillable":
+                start = offset + a["start_char"]
+                end = offset + a["end_char"]
+                ranges.append((start, end))
+        offset += len(text) + 1  # +1 for the \n separator
+    return ranges
+
+
+def _is_fully_in_fillable(violation: dict, fillable_ranges: list[tuple[int, int]]) -> bool:
+    """Check if the violation's template range lies entirely within fillable zones."""
+    tr = violation.get("template_range", [0, 0])
+    i1, i2 = tr[0], tr[1]
+    # For insert (i1 == i2): check if insertion point is inside a fillable zone
+    if i1 == i2:
+        return any(fs <= i1 < fe for fs, fe in fillable_ranges)
+    # For delete/replace: check if the entire range is within a single fillable zone
+    return any(fs <= i1 and i2 <= fe for fs, fe in fillable_ranges)
+
+
+def _neutralize_fillable_diffs(diffs: list[dict], fillable_ranges: list[tuple[int, int]]) -> list[dict]:
+    """Change fillable zone diffs to 'equal' so the inline document view doesn't highlight expected changes."""
+    for d in diffs:
+        if d["type"] == "equal":
+            continue
+        tr = d.get("template_range", [0, 0])
+        i1, i2 = tr[0], tr[1]
+        if i1 == i2:
+            in_zone = any(fs <= i1 < fe for fs, fe in fillable_ranges)
+        else:
+            in_zone = any(fs <= i1 and i2 <= fe for fs, fe in fillable_ranges)
+        if in_zone:
+            d["type"] = "equal"
+    return diffs
 
 
 @app.post("/api/review/validate")
@@ -261,15 +338,26 @@ def review_validate(body: ReviewRequest):
             raise HTTPException(404, "模板或文件不存在")
 
         annotations = conn.execute(
-            "SELECT paragraph_index, zone_type, rules FROM annotations WHERE template_id = ? AND zone_type = 'fillable'",
+            "SELECT paragraph_index, start_char, end_char, zone_type, rules FROM annotations WHERE template_id = ?",
             (body.template_id,)
         ).fetchall()
-        fillable_indices = {a["paragraph_index"] for a in annotations}
+        ann_list = [dict(a) for a in annotations]
 
-        values = DocxParser.extract_fillable_values(document["file_path"], fillable_indices)
-
-        ann_list = [{"paragraph_index": a["paragraph_index"], "rules": a["rules"]} for a in annotations]
+        values = DocxParser.extract_fillable_values(document["file_path"], ann_list)
         result = RuleValidator.validate(values, ann_list)
+
+        # Attach full paragraph text to each result for context display
+        doc_paras_list = DocxParser.parse(document["file_path"])
+        template_paras_list = DocxParser.parse(template["file_path"])
+        doc_paras = {p["index"]: p["text"] for p in doc_paras_list}
+        template_paras = {p["index"]: p["text"] for p in template_paras_list}
+        for r in result["results"]:
+            r["paragraph_text"] = doc_paras.get(r["paragraph"], "")
+            r["template_paragraph_text"] = template_paras.get(r["paragraph"], "")
+
+        # Include ALL document and template paragraphs for full-text display
+        result["document_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in doc_paras_list]
+        result["template_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in template_paras_list]
 
         conn.execute(
             "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'validate', ?)",

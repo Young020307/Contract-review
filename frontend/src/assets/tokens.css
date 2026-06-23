@@ -1,0 +1,64 @@
+/* Design tokens — 朱墨批阅 */
+:root {
+  /* Ink & paper */
+  --ink: #141413;
+  --ink-soft: #5c5b57;
+  --ink-muted: #8a8984;
+  --paper: #f5f4f0;
+  --paper-white: #ffffff;
+  --paper-warm: #fafaf8;
+  --paper-hover: #f0efeb;
+  --rule: #e7e5df;
+  --rule-light: #f0eeea;
+
+  /* Accent — vermilion 朱红 */
+  --vermilion: #c41e3a;
+  --vermilion-soft: #fef5f5;
+  --vermilion-border: #f5d4d8;
+
+  /* Accent — ink green 墨绿 */
+  --ink-green: #1b6d44;
+  --ink-green-soft: #eef7f1;
+  --ink-green-border: #c3e0cf;
+
+  /* Accent — amber 琥珀 */
+  --amber: #b8741a;
+  --amber-soft: #fef9f0;
+  --amber-border: #f0dbb8;
+
+  /* Accent — ink blue 墨蓝 */
+  --ink-blue: #2c5f8a;
+  --ink-blue-soft: #eef4f9;
+
+  /* Typography */
+  --font-display: "Noto Serif SC", "STSong", "SimSun", "Songti SC", serif;
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* Type scale */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* Radii */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 2px 8px rgba(0,0,0,.06);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,.08);
+}

@@ -24,16 +24,22 @@ export interface ValidationRule {
   allowed_chars: 'chinese' | 'number' | 'alphanumeric' | 'any' | 'regex'
   regex: string
   field_name: string
+  allowed_values: string[]
+  match_field: string
 }
 
 export interface AnnotationItem {
   paragraph_index: number
+  start_char: number
+  end_char: number
   zone_type: 'fixed' | 'fillable'
   rules?: ValidationRule
 }
 
 export interface AnnotationEntry {
   paragraph_index: number
+  start_char: number
+  end_char: number
   zone_type: string
   rules: string
 }
@@ -58,6 +64,8 @@ export interface CompareViolation {
   type: string
   template_text: string
   actual_text: string
+  template_range: [number, number]
+  doc_range: [number, number]
 }
 
 export interface CompareResult {
@@ -69,13 +77,19 @@ export interface CompareResult {
 
 export interface FieldResult {
   paragraph: number
+  start_char: number
+  end_char: number
   field_name: string
   actual_value: string
   rule: string
   pass: boolean
   reason: string
+  paragraph_text: string
+  template_paragraph_text: string
 }
 
 export interface ValidateResult {
   results: FieldResult[]
+  document_paragraphs: ParagraphInfo[]
+  template_paragraphs: ParagraphInfo[]
 }

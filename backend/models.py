@@ -9,10 +9,14 @@ class ValidationRule(BaseModel):
     allowed_chars: str = "any"  # "chinese" | "number" | "alphanumeric" | "any" | "regex"
     regex: str = ""
     field_name: str = ""
+    allowed_values: list[str] = []
+    match_field: str = ""
 
 # --- Request Models ---
 class AnnotationItem(BaseModel):
     paragraph_index: int
+    start_char: int = 0
+    end_char: int = 0
     zone_type: Literal["fixed", "fillable"]
     rules: Optional[ValidationRule] = None
 
@@ -67,6 +71,8 @@ class CompareResult(BaseModel):
 
 class FieldResult(BaseModel):
     paragraph: int
+    start_char: int = 0
+    end_char: int = 0
     field_name: str
     actual_value: str
     rule: str

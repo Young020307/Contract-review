@@ -22,6 +22,10 @@ export async function getTemplate(id: number): Promise<TemplateDetail> {
   return data
 }
 
+export async function deleteTemplate(id: number): Promise<void> {
+  await api.delete(`/templates/${id}`)
+}
+
 export async function saveAnnotations(templateId: number, annotations: AnnotationItem[]): Promise<void> {
   await api.post(`/templates/${templateId}/annotations`, { annotations })
 }
