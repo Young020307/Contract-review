@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import uuid
@@ -7,9 +8,10 @@ from database import init_db, get_connection
 from models import (
     AnnotationBatch, AnnotationItem, ValidationRule,
     TemplateResponse, TemplateDetailResponse, ParagraphInfo,
-    DocumentResponse
+    DocumentResponse, ReviewRequest
 )
 from services.parser import DocxParser
+from services.diff_engine import DiffEngine
 
 app = FastAPI(title="格式合同智能审查系统 Demo")
 
@@ -176,3 +178,37 @@ def get_document(document_id: int):
         paragraphs=[ParagraphInfo(index=p["index"], text=p["text"]) for p in paragraphs],
         uploaded_at=row["uploaded_at"] or ""
     )
+
+
+@app.post("/api/review/compare")
+def review_compare(body: ReviewRequest):
+    conn = get_connection()
+    try:
+        template = conn.execute("SELECT id, file_path FROM templates WHERE id = ?", (body.template_id,)).fetchone()
+        document = conn.execute("SELECT id, file_path FROM documents WHERE id = ?", (body.document_id,)).fetchone()
+        if not template or not document:
+            raise HTTPException(404, "模板或文件不存在")
+
+        # Get fixed paragraph indices from annotations
+        annotations = conn.execute(
+            "SELECT paragraph_index FROM annotations WHERE template_id = ? AND zone_type = 'fixed'",
+            (body.template_id,)
+        ).fetchall()
+        fixed_indices = {a["paragraph_index"] for a in annotations}
+
+        template_text = DocxParser.extract_fixed_text(template["file_path"], fixed_indices)
+        doc_text = DocxParser.extract_fixed_text(document["file_path"], fixed_indices)
+
+        result = DiffEngine.compare(template_text, doc_text)
+        result["template_text"] = template_text
+        result["document_text"] = doc_text
+
+        # Save review task
+        conn.execute(
+            "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'compare', ?)",
+            (body.template_id, body.document_id, json.dumps(result, ensure_ascii=False))
+        )
+        conn.commit()
+        return result
+    finally:
+        conn.close()
