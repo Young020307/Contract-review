@@ -4,6 +4,7 @@ import shutil
 import uuid
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from database import init_db, get_connection
 from models import (
     AnnotationBatch, AnnotationItem, ValidationRule,
@@ -129,6 +130,16 @@ def get_annotations(template_id: int):
         ]
     finally:
         conn.close()
+
+
+@app.get("/api/documents/proxy-template/{template_id}")
+async def proxy_template_file(template_id: int):
+    conn = get_connection()
+    row = conn.execute("SELECT file_path FROM templates WHERE id = ?", (template_id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404)
+    return FileResponse(row["file_path"], media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
 @app.post("/api/documents/upload", response_model=DocumentResponse)
