@@ -12,6 +12,7 @@ from models import (
 )
 from services.parser import DocxParser
 from services.diff_engine import DiffEngine
+from services.validator import RuleValidator
 
 app = FastAPI(title="格式合同智能审查系统 Demo")
 
@@ -206,6 +207,36 @@ def review_compare(body: ReviewRequest):
         # Save review task
         conn.execute(
             "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'compare', ?)",
+            (body.template_id, body.document_id, json.dumps(result, ensure_ascii=False))
+        )
+        conn.commit()
+        return result
+    finally:
+        conn.close()
+
+
+@app.post("/api/review/validate")
+def review_validate(body: ReviewRequest):
+    conn = get_connection()
+    try:
+        template = conn.execute("SELECT id, file_path FROM templates WHERE id = ?", (body.template_id,)).fetchone()
+        document = conn.execute("SELECT id, file_path FROM documents WHERE id = ?", (body.document_id,)).fetchone()
+        if not template or not document:
+            raise HTTPException(404, "模板或文件不存在")
+
+        annotations = conn.execute(
+            "SELECT paragraph_index, zone_type, rules FROM annotations WHERE template_id = ? AND zone_type = 'fillable'",
+            (body.template_id,)
+        ).fetchall()
+        fillable_indices = {a["paragraph_index"] for a in annotations}
+
+        values = DocxParser.extract_fillable_values(document["file_path"], fillable_indices)
+
+        ann_list = [{"paragraph_index": a["paragraph_index"], "rules": a["rules"]} for a in annotations]
+        result = RuleValidator.validate(values, ann_list)
+
+        conn.execute(
+            "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'validate', ?)",
             (body.template_id, body.document_id, json.dumps(result, ensure_ascii=False))
         )
         conn.commit()
