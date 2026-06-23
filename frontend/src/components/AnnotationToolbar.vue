@@ -86,11 +86,22 @@
     <div class="tb-divider"></div>
 
     <!-- Annotation list -->
-    <div class="ann-section">
+    <div v-show="!showFillableRules" class="ann-section">
       <h4 class="ann-title">已标注列表 <span class="ann-count">{{ annotations.length }}</span></h4>
+      <div class="ann-filter">
+        <button :class="['ann-fbtn', { active: annFilter === 'all' }]" @click="annFilter = 'all'">
+          全部 <span class="fbtn-num">{{ annotations.length }}</span>
+        </button>
+        <button :class="['ann-fbtn', 'fbtn-fillable', { active: annFilter === 'fillable' }]" @click="annFilter = 'fillable'">
+          填充 <span class="fbtn-num">{{ fillableCount }}</span>
+        </button>
+        <button :class="['ann-fbtn', 'fbtn-fixed', { active: annFilter === 'fixed' }]" @click="annFilter = 'fixed'">
+          固定 <span class="fbtn-num">{{ fixedCount }}</span>
+        </button>
+      </div>
       <div class="ann-list">
-        <div v-if="annotations.length === 0" class="ann-empty">暂无标注</div>
-        <div v-for="a in annotations" :key="`${a.paragraph_index}_${a.start_char}`"
+        <div v-if="filteredAnnotations.length === 0" class="ann-empty">暂无标注</div>
+        <div v-for="a in filteredAnnotations" :key="`${a.paragraph_index}_${a.start_char}`"
           class="ann-item" :ref="(el: any) => setAnnRef(a.paragraph_index, a.start_char, el)"
           @click="handleAnnItemClick(a)">
           <span class="ann-tag" :class="a.zone_type">
@@ -104,8 +115,6 @@
         </div>
       </div>
     </div>
-
-    <div class="tb-divider"></div>
 
     <el-button type="primary" @click="save" :loading="saving" size="large" style="width:100%">
       保存标注
@@ -136,10 +145,19 @@ const emit = defineEmits<{
   removeAnnotation: [paraIndex: number, startChar: number]
   cancelAnnotation: [paraIndex: number, startChar: number]
   updateAnnotation: [item: AnnotationItem]
+  focusAnnotation: [paraIndex: number, startChar: number]
 }>()
 
 const showFillableRules = ref(false)
 const editingAnnotation = ref<{ paraIndex: number; startChar: number } | null>(null)
+const annFilter = ref<'all' | 'fillable' | 'fixed'>('all')
+
+const fillableCount = computed(() => props.annotations.filter(a => a.zone_type === 'fillable').length)
+const fixedCount = computed(() => props.annotations.filter(a => a.zone_type === 'fixed').length)
+const filteredAnnotations = computed(() => {
+  if (annFilter.value === 'all') return props.annotations
+  return props.annotations.filter(a => a.zone_type === annFilter.value)
+})
 
 const fillableFieldNames = computed(() => {
   const names: string[] = []
@@ -254,6 +272,7 @@ function confirmFillable() {
 
 function handleAnnItemClick(a: AnnotationItem) {
   emit('selectPara', a.paragraph_index)
+  emit('focusAnnotation', a.paragraph_index, a.start_char)
   if (a.zone_type === 'fillable') {
     if (a.rules) {
       rules.value = Object.assign(
@@ -414,7 +433,8 @@ function save() { emit('save') }
 .ann-section {
   padding: 0 var(--space-3);
   flex: 1;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 .ann-title {
@@ -424,8 +444,38 @@ function save() { emit('save') }
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--ink);
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-1);
+  flex-shrink: 0;
 }
+
+.ann-filter {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  flex-shrink: 0;
+}
+.ann-fbtn {
+  flex: 1;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--paper-white);
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.ann-fbtn:hover { border-color: var(--ink-muted); color: var(--ink); }
+.ann-fbtn.active { color: var(--paper-white); border-color: var(--ink); background: var(--ink); }
+.fbtn-fillable.active { border-color: var(--ink-green); background: var(--ink-green); }
+.fbtn-fixed.active { border-color: var(--vermilion); background: var(--vermilion); }
+.fbtn-num { font-size: 10px; font-weight: 500; opacity: .75; }
+
 .ann-count {
   font-size: var(--text-xs);
   font-weight: 500;
@@ -436,8 +486,9 @@ function save() { emit('save') }
 }
 
 .ann-list {
-  max-height: 220px;
+  flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 .ann-empty {
   color: var(--ink-muted);

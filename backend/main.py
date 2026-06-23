@@ -128,7 +128,7 @@ def get_template(template_id: int):
         return TemplateDetailResponse(
             id=row["id"],
             name=row["name"],
-            paragraphs=[ParagraphInfo(index=p["index"], text=p["text"]) for p in paragraphs],
+            paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", [])) for p in paragraphs],
             created_at=row["created_at"] or ""
         )
     finally:
@@ -214,7 +214,7 @@ async def upload_document(file: UploadFile = File(...), template_id: int = Query
         id=doc_id,
         name=filename,
         template_id=template_id,
-        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"]) for p in paragraphs],
+        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", [])) for p in paragraphs],
         uploaded_at=""
     )
 
@@ -236,7 +236,7 @@ def get_document(document_id: int):
         id=row["id"],
         name=row["name"],
         template_id=row["template_id"],
-        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"]) for p in paragraphs],
+        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", [])) for p in paragraphs],
         uploaded_at=row["uploaded_at"] or ""
     )
 
@@ -343,7 +343,7 @@ def review_validate(body: ReviewRequest):
         ).fetchall()
         ann_list = [dict(a) for a in annotations]
 
-        values = DocxParser.extract_fillable_values(document["file_path"], ann_list)
+        values = DocxParser.extract_fillable_values(template["file_path"], document["file_path"], ann_list)
         result = RuleValidator.validate(values, ann_list)
 
         # Attach full paragraph text to each result for context display

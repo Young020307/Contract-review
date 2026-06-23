@@ -8,6 +8,7 @@
         :selected-end="selectedEnd"
         :annotations="annotations"
         :docx-indices="docxIndices"
+        :focused-zone="focusedZone"
         @paragraph-click="handleParagraphClick"
         @text-select="handleTextSelect"
         @annotation-click="handleAnnotationClick"
@@ -29,6 +30,7 @@
         @remove-annotation="handleRemoveAnnotation"
         @cancel-annotation="handleCancelAnnotation"
         @update-annotation="handleUpdateAnnotation"
+        @focus-annotation="handleFocusAnnotation"
       />
     </div>
   </div>
@@ -55,26 +57,35 @@ const selectedEnd = ref<number | null>(null)
 const annotations = ref<AnnotationItem[]>([])
 const docxIndices = ref<number[]>([])
 const clickedAnnotation = ref<{ paraIndex: number; startChar: number; zoneType: string } | null>(null)
+const focusedZone = ref<{ paraIndex: number; startChar: number } | null>(null)
 const saving = ref(false)
 
 onMounted(async () => {
   const template = await getTemplate(templateId)
   docxUrl.value = `/api/documents/proxy-template/${templateId}`
   docxIndices.value = template.paragraphs.map(p => p.index)
+  const detected = autoAnnotateUnderscores(template.paragraphs)
   try {
     const existing = await getAnnotations(templateId)
     if (existing.length > 0) {
-      annotations.value = existing.map(a => ({
+      const existingKeys = new Set(existing.map((a: any) => `${a.paragraph_index}_${a.start_char}`))
+      const merged: AnnotationItem[] = existing.map((a: any) => ({
         paragraph_index: a.paragraph_index,
         start_char: a.start_char,
         end_char: a.end_char,
         zone_type: a.zone_type as 'fixed' | 'fillable',
         rules: a.rules ? JSON.parse(a.rules) : undefined
       }))
+      for (const d of detected) {
+        if (!existingKeys.has(`${d.paragraph_index}_${d.start_char}`)) {
+          merged.push(d)
+        }
+      }
+      annotations.value = merged
     } else {
-      annotations.value = autoAnnotateUnderscores(template.paragraphs)
-      const fillCount = annotations.value.filter(a => a.zone_type === 'fillable').length
-      const fixedCount = annotations.value.filter(a => a.zone_type === 'fixed').length
+      annotations.value = detected
+      const fillCount = detected.filter(a => a.zone_type === 'fillable').length
+      const fixedCount = detected.filter(a => a.zone_type === 'fixed').length
       ElMessage.success(`已自动标注：${fillCount} 个填充区 + ${fixedCount} 个固定区，请完善后保存`)
     }
   } catch { /* no existing annotations */ }
@@ -85,17 +96,27 @@ function autoAnnotateUnderscores(paragraphs: ParagraphInfo[]): AnnotationItem[] 
   for (const para of paragraphs) {
     const text = para.text
     const fillableRanges: [number, number][] = []
+    // 1) underscore characters in text
     const regex = /_+/g
     let match: RegExpExecArray | null
     while ((match = regex.exec(text)) !== null) {
       fillableRanges.push([match.index, match.index + match[0].length])
     }
-    for (const [start, end] of fillableRanges) {
+    // 2) text with underline formatting from DOCX
+    for (const [s, e] of para.underline_ranges || []) {
+      // skip purely underscore spans (already covered above)
+      const slice = text.slice(s, e)
+      if (/^_+$/.test(slice)) continue
+      fillableRanges.push([s, e])
+    }
+    // merge overlapping / adjacent ranges
+    const merged = mergeRanges(fillableRanges)
+    for (const [start, end] of merged) {
       result.push({ paragraph_index: para.index, start_char: start, end_char: end, zone_type: 'fillable' })
     }
-    if (fillableRanges.length > 0) {
+    if (merged.length > 0) {
       let pos = 0
-      for (const [start, end] of fillableRanges) {
+      for (const [start, end] of merged) {
         if (pos < start) {
           result.push({ paragraph_index: para.index, start_char: pos, end_char: start, zone_type: 'fixed' })
         }
@@ -111,6 +132,21 @@ function autoAnnotateUnderscores(paragraphs: ParagraphInfo[]): AnnotationItem[] 
   return result
 }
 
+function mergeRanges(ranges: [number, number][]): [number, number][] {
+  if (!ranges.length) return []
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0])
+  const merged: [number, number][] = [sorted[0]]
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = merged[merged.length - 1]
+    if (sorted[i][0] <= prev[1]) {
+      prev[1] = Math.max(prev[1], sorted[i][1])
+    } else {
+      merged.push([...sorted[i]])
+    }
+  }
+  return merged
+}
+
 function handleParagraphClick(index: number, text?: string) {
   currentParagraph.value = index
   selectedStart.value = null
@@ -120,12 +156,18 @@ function handleParagraphClick(index: number, text?: string) {
   if (text !== undefined) paraText.value = text
 }
 
-function handleAnnotationClick(paraIndex: number, startChar: number, _endChar: number, zoneType: string) {
+function handleAnnotationClick(paraIndex: number, startChar: number, _endChar: number, zoneType: string, text: string) {
   currentParagraph.value = paraIndex
+  paraText.value = text
   selectedStart.value = null
   selectedEnd.value = null
   selectedText.value = ''
   clickedAnnotation.value = { paraIndex, startChar, zoneType }
+  focusedZone.value = { paraIndex, startChar }
+}
+
+function handleFocusAnnotation(paraIndex: number, startChar: number) {
+  focusedZone.value = { paraIndex, startChar }
 }
 
 function handleCancelAnnotation(paraIndex: number, startChar: number) {
@@ -137,7 +179,7 @@ function handleCancelAnnotation(paraIndex: number, startChar: number) {
 
 function handleUpdateAnnotation(item: AnnotationItem) {
   const idx = annotations.value.findIndex(
-    a => a.paragraph_index === item.paragraph_index && a.start_char === item.startChar
+    a => a.paragraph_index === item.paragraph_index && a.start_char === item.start_char
   )
   if (idx >= 0) annotations.value[idx] = { ...item }
   clickedAnnotation.value = null

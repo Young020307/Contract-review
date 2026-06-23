@@ -21,12 +21,13 @@ const props = defineProps<{
   selectedEnd: number | null
   annotations: AnnotationItem[]
   docxIndices: number[]
+  focusedZone: { paraIndex: number; startChar: number } | null
 }>()
 
 const emit = defineEmits<{
   paragraphClick: [index: number, text: string]
   textSelect: [paraIndex: number, startChar: number, endChar: number, text: string]
-  annotationClick: [paraIndex: number, startChar: number, endChar: number, zoneType: string]
+  annotationClick: [paraIndex: number, startChar: number, endChar: number, zoneType: string, text: string]
 }>()
 
 const container = ref<HTMLElement>()
@@ -50,7 +51,7 @@ function render() {
         const start = Number(parts[0])
         const end = Number(parts[1])
         const zoneType = parts[2]
-        emit('annotationClick', paraIndex, start, end, zoneType)
+        emit('annotationClick', paraIndex, start, end, zoneType, paraTexts.value.get(paraIndex) || '')
       }
     })
   })
@@ -70,6 +71,7 @@ watch(() => props.fileUrl, async (url) => {
 
 watch(() => props.annotations, () => { render() }, { deep: true })
 watch(() => props.selectedParagraph, () => { updateHighlight() })
+watch(() => props.focusedZone, () => { updateZoneFocus() })
 
 function buildAnnotatedHTML(mammothHTML: string): string {
   const parser = new DOMParser()
@@ -176,6 +178,21 @@ function updateHighlight() {
     if (el) el.classList.add('para-selected')
   }
 }
+
+function updateZoneFocus() {
+  if (!contentEl.value) return
+  contentEl.value.querySelectorAll('.zone-focused').forEach(el => el.classList.remove('zone-focused'))
+  if (props.focusedZone) {
+    const paraEl = contentEl.value.querySelector(`[data-para-index="${props.focusedZone.paraIndex}"]`) as HTMLElement | null
+    if (paraEl) {
+      const el = paraEl.querySelector(`[data-annotation^="${props.focusedZone.startChar},"]`) as HTMLElement | null
+      if (el) {
+        el.classList.add('zone-focused')
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+  }
+}
 </script>
 
 <style scoped>
@@ -255,6 +272,7 @@ function updateHighlight() {
   line-height: 2;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
+  white-space: pre-wrap;
 }
 .preview-body :deep(.para-body.para-selected) {
   background: var(--ink-blue-soft);
@@ -275,5 +293,14 @@ function updateHighlight() {
   border-radius: var(--radius-sm);
   border-bottom: 2px solid var(--vermilion);
   cursor: pointer;
+}
+.preview-body :deep(.zone-focused) {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+  animation: zonePulse .6s ease 2;
+}
+@keyframes zonePulse {
+  50% { outline-color: var(--vermilion); outline-width: 3px; }
 }
 </style>

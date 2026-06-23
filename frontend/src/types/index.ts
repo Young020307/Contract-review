@@ -1,6 +1,7 @@
 export interface ParagraphInfo {
   index: number
   text: string
+  underline_ranges?: [number, number][]
 }
 
 export interface TemplateInfo {

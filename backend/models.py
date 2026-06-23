@@ -31,6 +31,7 @@ class ReviewRequest(BaseModel):
 class ParagraphInfo(BaseModel):
     index: int
     text: str
+    underline_ranges: list[list[int]] = []
 
 class TemplateResponse(BaseModel):
     id: int
@@ -59,7 +60,7 @@ class DiffSegment(BaseModel):
 
 class Violation(BaseModel):
     paragraph: int
-    type: str
+    type: str  # "insert" | "delete" | "replace"
     template_text: str
     actual_text: str
 

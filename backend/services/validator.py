@@ -24,11 +24,14 @@ class RuleValidator:
                 rules = {}
 
             key = f"{pi}_{start}"
-            actual_value = values.get(key, "")
+            entry = values.get(key, {})
+            actual_value = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
+            doc_start = entry.get("doc_start", start) if isinstance(entry, dict) else start
+            doc_end = entry.get("doc_end", end) if isinstance(entry, dict) else end
             field_result = {
                 "paragraph": pi,
-                "start_char": start,
-                "end_char": end,
+                "start_char": doc_start,
+                "end_char": doc_end,
                 "field_name": rules.get("field_name", f"段落{pi}"),
                 "actual_value": actual_value,
                 "rule": RuleValidator._describe_rule(rules),
@@ -49,12 +52,12 @@ class RuleValidator:
             min_chars = rules.get("min_chars", 0)
             if len(actual_value) < min_chars:
                 field_result["pass"] = False
-                field_result["reason"] = f"字数不足：最少{min_chars}字，实际{len(actual_value)}字"
+                field_result["reason"] = f"字数不足：最少{min_chars}字符，实际{len(actual_value)}字符"
 
             max_chars = rules.get("max_chars", 9999)
             if len(actual_value) > max_chars:
                 field_result["pass"] = False
-                field_result["reason"] = f"字数超限：最多{max_chars}字，实际{len(actual_value)}字"
+                field_result["reason"] = f"字数超限：最多{max_chars}字符，实际{len(actual_value)}字符"
 
             allowed = rules.get("allowed_chars", "any")
             if allowed in RuleValidator.CHAR_PATTERNS:
@@ -96,7 +99,8 @@ class RuleValidator:
                 ar = json.loads(a["rules"]) if isinstance(a["rules"], str) else a["rules"]
                 if ar and ar.get("field_name") == match_field:
                     key = f"{a['paragraph_index']}_{a.get('start_char', 0)}"
-                    target_value = values.get(key, "")
+                    target_entry = values.get(key, {})
+                    target_value = target_entry.get("value", "") if isinstance(target_entry, dict) else (target_entry or "")
                     break
             if target_value is not None and field_result["actual_value"] != target_value:
                 field_result["pass"] = False
@@ -112,11 +116,11 @@ class RuleValidator:
         min_c = rules.get("min_chars", 0)
         max_c = rules.get("max_chars", 9999)
         if min_c and max_c < 9999:
-            parts.append(f"{min_c}-{max_c}字")
+            parts.append(f"{min_c}-{max_c}字符")
         elif min_c:
-            parts.append(f"最少{min_c}字")
+            parts.append(f"最少{min_c}字符")
         elif max_c < 9999:
-            parts.append(f"最多{max_c}字")
+            parts.append(f"最多{max_c}字符")
         allowed = rules.get("allowed_chars", "any")
         if allowed != "any":
             parts.append(allowed)

@@ -10,23 +10,44 @@
           </el-select>
         </el-form-item>
         <el-form-item label="上传业务文件">
-          <el-upload :show-file-list="false" :before-upload="handleDocUpload" accept=".docx">
-            <el-button :disabled="!selectedTemplateId" size="large">上传 docx</el-button>
+          <el-upload
+            ref="uploadRef"
+            drag
+            multiple
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".docx"
+            :disabled="!selectedTemplateId"
+            @change="handleFilesChange"
+          >
+            <el-icon :size="40"><UploadFilled /></el-icon>
+            <div class="upload-text">将文件拖拽到此处，或<em>点击选择</em></div>
+            <template #tip>
+              <div class="upload-tip">支持 .docx 格式，可一次选择多个文件</div>
+            </template>
           </el-upload>
         </el-form-item>
-        <el-form-item v-if="uploadedDoc" label="已上传">
-          <el-tag>{{ uploadedDoc.name }}</el-tag>
+        <el-form-item v-if="uploadedDocs.length" label="已上传">
+          <div class="file-tags">
+            <el-tag
+              v-for="(doc, idx) in uploadedDocs"
+              :key="doc.id"
+              closable
+              :disable-transitions="false"
+              @close="removeUploadedDoc(idx)"
+            >{{ doc.name }}</el-tag>
+          </div>
         </el-form-item>
         <el-form-item label="审查流程">
-          <el-radio-group v-model="reviewMode" :disabled="!uploadedDoc">
-            <el-radio value="compare">防篡改比对</el-radio>
+          <el-radio-group v-model="reviewMode" :disabled="!uploadedDocs.length">
+            <el-radio value="compare">篡改比对</el-radio>
             <el-radio value="validate">数据校验</el-radio>
             <el-radio value="both">全部执行</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item>
           <div style="width:100%;text-align:center">
-            <el-button type="primary" @click="startReview" :disabled="!uploadedDoc" :loading="reviewing" size="large">
+            <el-button type="primary" @click="startReview" :disabled="!uploadedDocs.length" :loading="reviewing" size="large">
               开始审查
             </el-button>
           </div>
@@ -36,6 +57,16 @@
 
     <!-- Result view -->
     <div v-if="showResult" class="unified-review">
+      <!-- Document tabs -->
+      <div class="doc-tabs-bar">
+        <button
+          v-for="(doc, idx) in uploadedDocs"
+          :key="doc.id"
+          :class="['doc-tab', { active: idx === activeDocIdx }]"
+          @click="activeDocIdx = idx"
+        >{{ doc.name }}</button>
+      </div>
+      <div class="review-panels">
       <!-- Left: Template (collapsible) -->
       <div class="left-panel" :class="{ collapsed: !showTemplate }">
         <div class="panel-head">
@@ -68,7 +99,7 @@
       <div class="center-panel">
         <div class="panel-head">
           <span>实际文档</span>
-          <span class="doc-meta">{{ uploadedDoc?.name }}</span>
+          <span class="doc-meta">{{ activeDoc?.name }}</span>
         </div>
         <div class="panel-body doc-body" ref="docBody">
           <div v-for="p in renderedParagraphs" :key="'d' + p.index" class="para-block"
@@ -103,7 +134,7 @@
         <!-- Comparison results -->
         <div v-if="compareResult && (resultFilter === 'tamper' || resultFilter === 'all')" class="result-block compare-block">
           <div class="block-head">
-            <span>防篡改比对</span>
+            <span>篡改比对</span>
             <el-tag v-if="compareResult.violations.length" type="danger" size="small">
               {{ compareResult.violations.length }} 处
             </el-tag>
@@ -116,10 +147,10 @@
             </div>
             <div v-for="(v, i) in compareResult.violations" :key="'v' + i"
               class="vio-item" :ref="(el: any) => setVioRef(i, el)" @click="scrollToViolation(i)">
-              <span class="vio-stamp">篡改</span>
+              <span class="vio-stamp" :class="'stamp-' + v.type">{{ stampLabel(v.type) }}</span>
               <div class="vio-body">
-                <div class="vio-row tpl">模板：{{ truncate(v.template_text) }}</div>
-                <div class="vio-row act">实际：{{ truncate(v.actual_text) }}</div>
+                <div class="vio-row tpl">模板：{{ v.type === 'insert' ? '(空)' : truncate(v.template_text) }}</div>
+                <div class="vio-row act">实际：{{ v.type === 'delete' ? '(空)' : truncate(v.actual_text) }}</div>
               </div>
             </div>
           </div>
@@ -148,27 +179,33 @@
           </div>
         </div>
       </div>
+      </div><!-- .review-panels -->
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, ArrowRight, CircleCheckFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, CircleCheckFilled, UploadFilled } from '@element-plus/icons-vue'
 import { listTemplates, uploadDocument, reviewCompare, reviewValidate } from '../api'
 import type { TemplateInfo, DocumentInfo, CompareResult, ValidateResult, DiffSegment, FieldResult, ParagraphInfo } from '../types'
 
 // State
 const templates = ref<TemplateInfo[]>([])
 const selectedTemplateId = ref<number | null>(null)
-const uploadedDoc = ref<DocumentInfo | null>(null)
+const uploadedDocs = ref<DocumentInfo[]>([])
+const activeDocIdx = ref(0)
 const reviewMode = ref<'compare' | 'validate' | 'both'>('compare')
 const reviewing = ref(false)
 const showResult = ref(false)
 
-const compareResult = ref<CompareResult | null>(null)
-const validateResult = ref<ValidateResult | null>(null)
+// Per-document review results
+const docResults = reactive<Record<number, { compare: CompareResult | null; validate: ValidateResult | null }>>({})
+
+const activeDoc = computed(() => uploadedDocs.value[activeDocIdx.value] || null)
+const compareResult = computed(() => docResults[activeDoc.value?.id ?? 0]?.compare ?? null)
+const validateResult = computed(() => docResults[activeDoc.value?.id ?? 0]?.validate ?? null)
 
 const showTemplate = ref(false)
 const resultFilter = ref<'tamper' | 'validate' | 'all'>('all')
@@ -183,24 +220,43 @@ function setParaRef(index: number, el: any) { if (el) paraRefs.value[index] = el
 
 onMounted(async () => { templates.value = await listTemplates() })
 
-async function handleDocUpload(file: File) {
-  if (!selectedTemplateId.value) return false
-  uploadedDoc.value = await uploadDocument(file, selectedTemplateId.value)
-  ElMessage.success('文件上传成功')
-  return false
+async function handleFilesChange(file: any) {
+  if (!selectedTemplateId.value) return
+  const tid = selectedTemplateId.value
+  try {
+    const doc = await uploadDocument(file.raw, tid)
+    uploadedDocs.value.push(doc)
+    ElMessage.success(`${file.name} 上传成功`)
+  } catch {
+    ElMessage.error(`${file.name} 上传失败`)
+  }
+}
+
+function removeUploadedDoc(idx: number) {
+  const doc = uploadedDocs.value[idx]
+  if (!doc) return
+  delete docResults[doc.id]
+  uploadedDocs.value.splice(idx, 1)
+  if (activeDocIdx.value >= uploadedDocs.value.length) {
+    activeDocIdx.value = Math.max(0, uploadedDocs.value.length - 1)
+  }
 }
 
 async function startReview() {
-  if (!selectedTemplateId.value || !uploadedDoc.value) return
+  if (!selectedTemplateId.value || !uploadedDocs.value.length) return
   reviewing.value = true
   const tid = selectedTemplateId.value
-  const did = uploadedDoc.value.id
-  if (reviewMode.value === 'compare' || reviewMode.value === 'both') {
-    compareResult.value = await reviewCompare(tid, did)
-  } else { compareResult.value = null }
-  if (reviewMode.value === 'validate' || reviewMode.value === 'both') {
-    validateResult.value = await reviewValidate(tid, did)
-  } else { validateResult.value = null }
+  for (const doc of uploadedDocs.value) {
+    const did = doc.id
+    const entry: { compare: CompareResult | null; validate: ValidateResult | null } = { compare: null, validate: null }
+    if (reviewMode.value === 'compare' || reviewMode.value === 'both') {
+      entry.compare = await reviewCompare(tid, did)
+    }
+    if (reviewMode.value === 'validate' || reviewMode.value === 'both') {
+      entry.validate = await reviewValidate(tid, did)
+    }
+    docResults[did] = entry
+  }
   showResult.value = true
   reviewing.value = false
 }
@@ -224,7 +280,7 @@ const templateParagraphs = computed(() => {
 
 const docParagraphs = computed<ParagraphInfo[]>(() => {
   if (validateResult.value?.document_paragraphs?.length) return validateResult.value.document_paragraphs
-  return uploadedDoc.value?.paragraphs ?? []
+  return activeDoc.value?.paragraphs ?? []
 })
 
 interface DocSeg { text: string; type: string; fieldIdx?: string; vioDocStart?: number }
@@ -329,6 +385,11 @@ function segClass(type: string): Record<string, boolean> {
   return map[type] || {}
 }
 
+function stampLabel(type: string): string {
+  const map: Record<string, string> = { insert: '新增', delete: '删除', replace: '替换' }
+  return map[type] || '变更'
+}
+
 function truncate(text: string): string {
   return text && text.length > 25 ? text.slice(0, 25) + '…' : text || '(空)'
 }
@@ -407,7 +468,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 
 /* ---- Setup ---- */
 .setup-card {
-  width: 520px;
+  width: 620px;
   margin: var(--space-8) auto;
   align-self: center;
   padding: var(--space-6) var(--space-8);
@@ -415,6 +476,31 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   border: 1px solid var(--rule);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
+}
+
+/* Drag-and-drop upload */
+.setup-card :deep(.el-upload-dragger) {
+  padding: var(--space-3) var(--space-5);
+  height: auto;
+}
+.upload-text {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.upload-text em {
+  color: var(--ink-blue);
+  font-style: normal;
+}
+.upload-tip {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+.file-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 .setup-title {
   font-family: var(--font-display);
@@ -433,10 +519,47 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   justify-content: center;
 }
 
+/* ---- Document tabs ---- */
+.doc-tabs-bar {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  background: var(--paper-white);
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+}
+.doc-tab {
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+}
+.doc-tab:hover { color: var(--ink); background: var(--paper-hover); }
+.doc-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+  font-weight: 600;
+}
+
+/* ---- Review panels (3-col after tabs) ---- */
+.review-panels {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ---- Unified review layout ---- */
 .unified-review {
   flex: 1;
   display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
   width: 100%;
@@ -691,15 +814,18 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  min-width: 36px;
   height: 22px;
+  padding: 0 5px;
   font-size: 10px;
   font-weight: 700;
-  color: var(--vermilion);
-  border: 1.5px solid var(--vermilion);
+  border: 1.5px solid;
   border-radius: var(--radius-sm);
   transform: rotate(-3deg);
 }
+.vio-stamp.stamp-insert { color: var(--ink-blue); border-color: var(--ink-blue); }
+.vio-stamp.stamp-delete { color: var(--vermilion); border-color: var(--vermilion); }
+.vio-stamp.stamp-replace { color: var(--amber); border-color: var(--amber); }
 .vio-body { min-width: 0; }
 .vio-row { font-size: var(--text-xs); line-height: 1.8; word-break: break-all; }
 .vio-row.tpl { color: var(--ink-muted); }
