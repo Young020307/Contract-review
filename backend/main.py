@@ -1,12 +1,13 @@
 import os
 import shutil
 import uuid
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db, get_connection
 from models import (
     AnnotationBatch, AnnotationItem, ValidationRule,
-    TemplateResponse, TemplateDetailResponse, ParagraphInfo
+    TemplateResponse, TemplateDetailResponse, ParagraphInfo,
+    DocumentResponse
 )
 from services.parser import DocxParser
 
@@ -125,3 +126,53 @@ def get_annotations(template_id: int):
         ]
     finally:
         conn.close()
+
+
+@app.post("/api/documents/upload", response_model=DocumentResponse)
+async def upload_document(file: UploadFile = File(...), template_id: int = Query(...)):
+    if not file.filename.endswith(".docx"):
+        raise HTTPException(400, "只支持 .docx 文件")
+    safe_name = f"doc_{uuid.uuid4().hex}_{file.filename}"
+    file_path = os.path.join(UPLOAD_DIR, safe_name)
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    conn = get_connection()
+    try:
+        paragraphs = DocxParser.parse(file_path)
+        cur = conn.execute(
+            "INSERT INTO documents (template_id, name, file_path) VALUES (?, ?, ?)",
+            (template_id, file.filename, file_path)
+        )
+        conn.commit()
+        doc_id = cur.lastrowid
+    finally:
+        conn.close()
+    return DocumentResponse(
+        id=doc_id,
+        name=file.filename,
+        template_id=template_id,
+        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"]) for p in paragraphs],
+        uploaded_at=""
+    )
+
+
+@app.get("/api/documents/{document_id}", response_model=DocumentResponse)
+def get_document(document_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, name, template_id, file_path, uploaded_at FROM documents WHERE id = ?",
+            (document_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "文件不存在")
+        paragraphs = DocxParser.parse(row["file_path"])
+    finally:
+        conn.close()
+    return DocumentResponse(
+        id=row["id"],
+        name=row["name"],
+        template_id=row["template_id"],
+        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"]) for p in paragraphs],
+        uploaded_at=row["uploaded_at"] or ""
+    )
