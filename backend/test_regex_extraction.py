@@ -147,12 +147,12 @@ def test_regex_special_chars_in_fixed_text():
 
 
 def test_fallback_on_mismatch():
-    """Fixed text differs → regex won't match → fallback to char-slice."""
-    print("Test 6: regex mismatch triggers fallback")
+    """Fixed text differs → regex won't match → paragraph treated as unmatched."""
+    print("Test 6: regex mismatch — paragraph not found")
     with tempfile.TemporaryDirectory() as tmp:
         tpl = os.path.join(tmp, "tpl.docx")
         doc = os.path.join(tmp, "doc.docx")
-        # "方" changed to "万" — regex anchors won't match
+        # "方" changed to "万" — fixed-text regex anchors won't match
         make_docx(["甲方：_____公司"], tpl)
         make_docx(["甲万：某某公司"], doc)
 
@@ -161,8 +161,9 @@ def test_fallback_on_mismatch():
         ]
         values = DocxParser.extract_fillable_values(tpl, doc, annotations)
 
-        assert values["0_3"]["value"] != "", f"FAIL: fallback should still extract something"
-        print(f"  PASS (fallback: '{values['0_3']}')")
+        # Fixed text "甲方：" doesn't match "甲万：" → paragraph not aligned → no extraction
+        assert "0_3" not in values, f"FAIL: mismatched fixed text should prevent extraction"
+        print("  PASS")
 
 
 def test_no_fillable_annotations():
@@ -199,9 +200,10 @@ def test_paragraph_count_mismatch():
             {"paragraph_index": 2, "start_char": 0, "end_char": 5, "zone_type": "fillable"},
         ]
         values = DocxParser.extract_fillable_values(tpl, doc, annotations)
-        # Both paras have full-text fillable annotations (empty skeleton);
-        # alignment can't match empty skeletons, so both map to None.
-        assert "0_0" not in values, f"FAIL: empty-skeleton para 0 should be skipped"
+        # T0 ("para0") matches D0 ("para0") — text inclusion works for entirely-fillable
+        assert "0_0" in values, f"FAIL: para 0 should be extracted"
+        assert values["0_0"]["value"] == "para0", f"FAIL: expected 'para0', got '{values['0_0']}'"
+        # T2 ("para2") can't match — no remaining doc paragraphs
         assert "2_0" not in values, f"FAIL: para 2 should be skipped"
         print("  PASS")
 

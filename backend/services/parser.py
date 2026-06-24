@@ -130,11 +130,15 @@ class DocxParser:
     @staticmethod
     def align_paragraphs(tpl_paras: list[dict], doc_paras: list[dict],
                          annotations: list[dict]) -> dict:
-        """Align template paragraphs to document paragraphs via skeleton-text matching.
+        """Align template paragraphs to document paragraphs using fixed-text regex matching.
+
+        For each template paragraph, extracts the fixed-text skeleton (non-fillable
+        segments) and uses it as a search pattern to find the corresponding document
+        paragraph. No similarity thresholds — matching is deterministic.
 
         Returns {"mapping": {tpl_idx: doc_idx|None}, "inserted": [doc_idx, ...]}
         """
-        from difflib import SequenceMatcher
+        import re
 
         ann_by_para: dict[int, list[dict]] = {}
         for a in annotations:
@@ -142,51 +146,80 @@ class DocxParser:
                 continue
             ann_by_para.setdefault(a["paragraph_index"], []).append(a)
 
-        tpl_skeletons = []
-        for p in tpl_paras:
-            ranges = [(a["start_char"], a["end_char"])
-                      for a in ann_by_para.get(p["index"], [])]
-            tpl_skeletons.append(
-                DocxParser._get_fixed_text_per_para(p["text"], ranges))
-
         doc_texts = [p["text"] for p in doc_paras]
-
-        i, j = 0, 0
+        used_docs: set[int] = set()
         mapping: dict[int, int | None] = {}
-        inserted: list[int] = []
 
-        while i < len(tpl_skeletons) and j < len(doc_texts):
-            cur = SequenceMatcher(None, tpl_skeletons[i], doc_texts[j]).ratio()
+        for p in tpl_paras:
+            pi = p["index"]
+            text = p["text"]
+            anns = ann_by_para.get(pi, [])
 
-            skip = 0.0
-            if j + 1 < len(doc_texts):
-                skip = SequenceMatcher(None, tpl_skeletons[i], doc_texts[j + 1]).ratio()
-
-            drop = 0.0
-            if i + 1 < len(tpl_skeletons):
-                drop = SequenceMatcher(None, tpl_skeletons[i + 1], doc_texts[j]).ratio()
-
-            if cur >= 0.5:
-                mapping[i] = j
-                i += 1
-                j += 1
-            elif skip > cur:
-                inserted.append(j)
-                j += 1
-            elif drop > cur:
-                mapping[i] = None
-                i += 1
+            if not anns:
+                # No fillable zones: match by exact text equality
+                found = None
+                for j, dt in enumerate(doc_texts):
+                    if j in used_docs:
+                        continue
+                    if dt == text:
+                        found = j
+                        break
+                mapping[pi] = found
+                if found is not None:
+                    used_docs.add(found)
             else:
-                mapping[i] = j
-                i += 1
-                j += 1
+                # Build fixed-text skeleton segments and construct a regex
+                ranges = sorted(
+                    [(a["start_char"], a["end_char"]) for a in anns],
+                    key=lambda r: r[0])
+                fixed_segments = []
+                pos = 0
+                for s, e in ranges:
+                    s = max(0, min(s, len(text)))
+                    e = max(s, min(e, len(text)))
+                    if pos < s:
+                        fixed_segments.append(text[pos:s])
+                    pos = max(pos, e)
+                if pos < len(text):
+                    fixed_segments.append(text[pos:])
 
-        while i < len(tpl_skeletons):
-            mapping[i] = None
-            i += 1
-        while j < len(doc_texts):
-            inserted.append(j)
-            j += 1
+                if not fixed_segments:
+                    # Entire paragraph is fillable — match next unused doc paragraph.
+                    # Placeholder-only text (like "_____") won't be a substring of
+                    # the filled document text, so fall through to positional match.
+                    found = None
+                    for j, dt in enumerate(doc_texts):
+                        if j in used_docs:
+                            continue
+                        if text in dt or dt in text:
+                            found = j
+                            break
+                    if found is None:
+                        # Accept first unused document paragraph (fillable content)
+                        for j, dt in enumerate(doc_texts):
+                            if j in used_docs:
+                                continue
+                            found = j
+                            break
+                    mapping[pi] = found
+                    if found is not None:
+                        used_docs.add(found)
+                else:
+                    # Build regex: fixed segments separated by .*? (non-greedy)
+                    pattern = ".*?".join(re.escape(s) for s in fixed_segments)
+                    found = None
+                    for j, dt in enumerate(doc_texts):
+                        if j in used_docs:
+                            continue
+                        if re.search(pattern, dt):
+                            found = j
+                            break
+                    mapping[pi] = found
+                    if found is not None:
+                        used_docs.add(found)
+
+        inserted = sorted(
+            [j for j in range(len(doc_texts)) if j not in used_docs])
 
         return {"mapping": mapping, "inserted": inserted}
 
