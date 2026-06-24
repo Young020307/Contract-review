@@ -430,48 +430,50 @@ def review_validate(body: ReviewRequest):
 
         # Cross-paragraph dependent check: dependent_paras fillable zones
         # are optional when checked, must be empty when unchecked.
+        # Pre-scan: for each dependent paragraph, is ANY governing checkbox checked?
+        dep_para_any_checked: dict[int, bool] = {}
         for a in ann_list:
             if a.get("zone_type") != "fillable":
                 continue
             rules = _parse_annotation_rules(a.get("rules", "{}"))
-            rg = rules.get("radio_group", "")
             deps = rules.get("dependent_paras", [])
-            if not rg or not deps:
+            if not rules.get("radio_group") or not deps:
                 continue
             pi = a["paragraph_index"]
             key = f"{pi}_{a.get('start_char', 0)}"
             is_checked = values.get(key, {}).get("checked", False)
-
             for dep_pi in deps:
-                for r in result["results"]:
-                    if r["paragraph"] != dep_pi:
-                        continue
-                    # Find annotation for this result to check it's not a checkbox
-                    dep_ann = None
-                    for da in ann_list:
-                        if (da.get("zone_type") == "fillable"
-                                and da["paragraph_index"] == dep_pi
-                                and da.get("start_char", 0) == r.get("start_char", 0)):
-                            dep_ann = da
-                            break
-                    if not dep_ann:
-                        continue
-                    dep_rules = _parse_annotation_rules(dep_ann.get("rules", "{}"))
-                    if dep_rules.get("radio_group"):
-                        continue  # skip checkboxes in dependent paragraphs
-                    dep_key = f"{dep_pi}_{dep_ann.get('start_char', 0)}"
-                    v = values.get(dep_key, {})
-                    actual = v.get("value", "") if isinstance(v, dict) else (v or "")
-                    has_content = bool(str(actual).strip("_ "))
+                dep_para_any_checked[dep_pi] = dep_para_any_checked.get(dep_pi, False) or is_checked
 
-                    if not is_checked:
-                        if has_content:
-                            r["pass"] = False
-                            r["reason"] = "该条款未勾选，不应填写内容"
-                        else:
-                            r["pass"] = True
-                            r["reason"] = ""
-                    # when is_checked: PASS either way (optional)
+        for r in result["results"]:
+            pi = r["paragraph"]
+            if pi not in dep_para_any_checked:
+                continue
+            dep_ann = None
+            for da in ann_list:
+                if (da.get("zone_type") == "fillable"
+                        and da["paragraph_index"] == pi
+                        and da.get("start_char", 0) == r.get("start_char", 0)):
+                    dep_ann = da
+                    break
+            if not dep_ann:
+                continue
+            dep_rules = _parse_annotation_rules(dep_ann.get("rules", "{}"))
+            if dep_rules.get("radio_group"):
+                continue
+            dep_key = f"{pi}_{dep_ann.get('start_char', 0)}"
+            v = values.get(dep_key, {})
+            actual = v.get("value", "") if isinstance(v, dict) else (v or "")
+            has_content = bool(str(actual).strip("_ "))
+
+            if not dep_para_any_checked[pi]:
+                if has_content:
+                    r["pass"] = False
+                    r["reason"] = "该条款未勾选，不应填写内容"
+                else:
+                    r["pass"] = True
+                    r["reason"] = ""
+            # any governing checkbox is checked → PASS either way
 
         result["results"].sort(key=lambda r: r["pass"])
 
