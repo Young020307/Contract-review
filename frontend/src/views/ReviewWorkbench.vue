@@ -2,14 +2,20 @@
   <div class="review-page">
     <!-- Setup form -->
     <div v-if="!showResult" class="setup-card">
-      <h2 class="setup-title">审查工作台</h2>
-      <el-form label-width="96px">
+      <div class="setup-header">
+        <div class="setup-icon">
+          <el-icon :size="28"><Search /></el-icon>
+        </div>
+        <h2 class="setup-title">审查工作台</h2>
+        <p class="setup-desc">选择模板并上传待审查的业务文件，系统将自动比对篡改并校验数据</p>
+      </div>
+      <el-form label-width="96px" size="large">
         <el-form-item label="选择模板">
-          <el-select v-model="selectedTemplateId" placeholder="请选择模板" size="large">
+          <el-select v-model="selectedTemplateId" placeholder="请选择模板">
             <el-option v-for="t in templates" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="上传业务文件">
+        <el-form-item label="上传文件">
           <el-upload
             ref="uploadRef"
             drag
@@ -19,12 +25,15 @@
             accept=".docx"
             :disabled="!selectedTemplateId"
             @change="handleFilesChange"
+            class="upload-zone"
           >
-            <el-icon :size="40"><UploadFilled /></el-icon>
-            <div class="upload-text">将文件拖拽到此处，或<em>点击选择</em></div>
-            <template #tip>
-              <div class="upload-tip">支持 .docx 格式，可一次选择多个文件</div>
-            </template>
+            <div class="upload-inner">
+              <div class="upload-icon-circle">
+                <el-icon :size="24"><UploadFilled /></el-icon>
+              </div>
+              <div class="upload-text">将 .docx 文件拖拽到此处，或<span class="upload-link">点击选择</span></div>
+              <div class="upload-tip">支持批量上传，一次可选取多个合同文件</div>
+            </div>
           </el-upload>
         </el-form-item>
         <el-form-item v-if="uploadedDocs.length" label="已上传">
@@ -35,22 +44,22 @@
               closable
               :disable-transitions="false"
               @close="removeUploadedDoc(idx)"
+              size="large"
             >{{ doc.name }}</el-tag>
           </div>
         </el-form-item>
         <el-form-item label="审查流程">
           <el-radio-group v-model="reviewMode" :disabled="!uploadedDocs.length">
-            <el-radio value="compare">篡改比对</el-radio>
-            <el-radio value="validate">数据校验</el-radio>
-            <el-radio value="both">全部执行</el-radio>
+            <el-radio-button value="compare">篡改比对</el-radio-button>
+            <el-radio-button value="validate">数据校验</el-radio-button>
+            <el-radio-button value="both">全部执行</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item>
-          <div style="width:100%;text-align:center">
-            <el-button type="primary" @click="startReview" :disabled="!uploadedDocs.length" :loading="reviewing" size="large">
-              开始审查
-            </el-button>
-          </div>
+          <el-button type="primary" @click="startReview" :disabled="!uploadedDocs.length" :loading="reviewing" size="large" class="start-btn">
+            <el-icon><Search /></el-icon>
+            开始审查
+          </el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -61,21 +70,27 @@
       <div class="doc-tabs-bar">
         <el-button text @click="showResult = false" class="back-to-setup">
           <el-icon><ArrowLeft /></el-icon>
-          返回工作台
+          返回
         </el-button>
-        <button
-          v-for="(doc, idx) in uploadedDocs"
-          :key="doc.id"
-          :class="['doc-tab', { active: idx === activeDocIdx }]"
-          @click="activeDocIdx = idx"
-        >{{ doc.name }}</button>
+        <div class="tabs-scroll">
+          <button
+            v-for="(doc, idx) in uploadedDocs"
+            :key="doc.id"
+            :class="['doc-tab', { active: idx === activeDocIdx }]"
+            @click="activeDocIdx = idx"
+          >
+            <el-icon :size="14"><Document /></el-icon>
+            {{ doc.name }}
+          </button>
+        </div>
       </div>
       <div class="review-panels">
       <!-- Left: Template (collapsible) -->
       <div class="left-panel" :class="{ collapsed: !showTemplate }">
         <div class="panel-head">
+          <el-icon :size="16"><Tickets /></el-icon>
           <span>模板原文</span>
-          <el-button text size="small" @click="showTemplate = false">
+          <el-button text size="small" class="panel-collapse-btn" @click="showTemplate = false">
             <el-icon><ArrowLeft /></el-icon>
           </el-button>
         </div>
@@ -96,12 +111,13 @@
       <!-- Toggle when collapsed -->
       <div v-if="!showTemplate" class="left-toggle" @click="showTemplate = true">
         <el-icon><ArrowRight /></el-icon>
-        <span class="toggle-label">模板</span>
+        <span class="toggle-label">模板原文</span>
       </div>
 
       <!-- Center: Document -->
       <div class="center-panel">
         <div class="panel-head">
+          <el-icon :size="16"><Document /></el-icon>
           <span>实际文档</span>
           <span class="doc-meta">{{ activeDoc?.name }}</span>
         </div>
@@ -125,6 +141,10 @@
 
       <!-- Right: Results -->
       <div class="right-panel">
+        <div class="panel-head">
+          <el-icon :size="16"><WarningFilled /></el-icon>
+          <span>审查结果</span>
+        </div>
         <!-- Filter stamps -->
         <div class="filter-bar">
           <button :class="['stamp-btn', 'stamp-tamper', { active: resultFilter === 'tamper' }]"
@@ -197,7 +217,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, ArrowRight, CircleCheckFilled, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, CircleCheckFilled, Document, Search, Tickets, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
 import { listTemplates, uploadDocument, reviewCompare, reviewValidate } from '../api'
 import type { TemplateInfo, DocumentInfo, CompareResult, ValidateResult, DiffSegment, FieldResult, ParagraphInfo } from '../types'
 
@@ -545,74 +565,123 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 
 <style scoped>
 /* ---- Page ---- */
-.review-page { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+.review-page { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: var(--paper); }
 
 /* ---- Setup ---- */
 .setup-card {
-  width: 620px;
-  margin: var(--space-8) auto;
-  align-self: center;
-  padding: var(--space-6) var(--space-8);
+  width: 640px;
+  max-width: 90vw;
   background: var(--paper-white);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  transition: box-shadow var(--transition-base);
-}
-.setup-card:hover {
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
-
-/* Drag-and-drop upload */
-.setup-card :deep(.el-upload-dragger) {
-  padding: var(--space-3) var(--space-5);
-  height: auto;
+.setup-header {
+  text-align: center;
+  padding: var(--space-6) var(--space-8) var(--space-4);
+  background: linear-gradient(180deg, var(--paper-warm) 0%, var(--paper-white) 100%);
+  border-bottom: 1px solid var(--rule);
 }
-.upload-text {
-  margin-top: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--ink-muted);
-}
-.upload-text em {
-  color: var(--ink-blue);
-  font-style: normal;
-}
-.upload-tip {
-  margin-top: var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--ink-soft);
-}
-.file-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+.setup-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  background: var(--primary);
+  color: var(--paper-white);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  box-shadow: 0 2px 8px rgba(37,99,235,.25);
 }
 .setup-title {
   font-family: var(--font-display);
   font-size: var(--text-xl);
   font-weight: 700;
   color: var(--ink);
-  margin: 0 0 var(--space-5);
-  text-align: center;
-  letter-spacing: .03em;
+  margin: 0 0 var(--space-2);
+  letter-spacing: .04em;
+}
+.setup-desc {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+.setup-card :deep(.el-form) {
+  padding: var(--space-5) var(--space-8) var(--space-6);
+}
+.setup-card :deep(.el-form-item) {
+  margin-bottom: var(--space-5);
+}
+.setup-card :deep(.el-form-item__label) {
+  font-weight: 600;
+  font-size: var(--text-sm);
 }
 
-.setup-card :deep(.el-upload-dragger) {
-  border-radius: var(--radius-md);
+/* Upload zone */
+.upload-zone :deep(.el-upload-dragger) {
+  padding: var(--space-6) var(--space-5);
   border: 2px dashed var(--rule);
-  transition: all var(--transition-fast);
-}
-.setup-card :deep(.el-upload-dragger:hover) {
-  border-color: var(--ink-muted);
+  border-radius: var(--radius-md);
   background: var(--paper-warm);
+  transition: all var(--transition-base);
+}
+.upload-zone :deep(.el-upload-dragger:hover) {
+  border-color: var(--ink-muted);
+  background: var(--paper);
+}
+.upload-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+.upload-icon-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink-muted);
+  border: 2px dashed var(--rule);
+  margin-bottom: var(--space-1);
+}
+.upload-text {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.upload-link {
+  color: var(--ink);
+  font-weight: 600;
+}
+.upload-tip {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  margin-top: var(--space-1);
+}
+.file-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
-.setup-card :deep(.el-form-item:last-child) {
-  margin-left: 0;
-}
+/* Center last form item */
 .setup-card :deep(.el-form-item:last-child .el-form-item__content) {
   margin-left: 0 !important;
   justify-content: center;
+}
+
+/* Start button */
+.start-btn {
+  width: 280px;
+  height: 48px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  letter-spacing: .04em;
 }
 
 /* ---- Document tabs ---- */
@@ -620,23 +689,29 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 0;
   background: var(--paper-white);
   border-bottom: 1px solid var(--rule);
-  overflow-x: auto;
 }
 .back-to-setup {
   flex-shrink: 0;
   font-size: var(--text-sm);
   color: var(--ink-soft);
   font-weight: 500;
-  padding: var(--space-2) var(--space-4);
-  margin-right: var(--space-2);
+  padding: 10px var(--space-4);
+  border-right: 1px solid var(--rule);
   transition: color var(--transition-fast);
 }
 .back-to-setup:hover { color: var(--ink); }
+.tabs-scroll {
+  display: flex;
+  overflow-x: auto;
+  flex: 1;
+}
 .doc-tab {
-  padding: var(--space-2) var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px var(--space-4);
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
@@ -645,13 +720,14 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: all .15s;
+  transition: all var(--transition-fast);
 }
 .doc-tab:hover { color: var(--ink); background: var(--paper-hover); }
 .doc-tab.active {
   color: var(--ink);
   border-bottom-color: var(--ink);
   font-weight: 600;
+  background: var(--paper-warm);
 }
 
 /* ---- Review panels (3-col after tabs) ---- */
@@ -674,8 +750,8 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 
 /* Left panel */
 .left-panel {
-  width: 280px;
-  min-width: 280px;
+  width: 300px;
+  min-width: 300px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--rule);
@@ -691,19 +767,21 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  width: 28px;
-  min-width: 28px;
+  gap: 6px;
+  width: 32px;
+  min-width: 32px;
   cursor: pointer;
   background: var(--paper-warm);
   border-right: 1px solid var(--rule);
   color: var(--ink-muted);
-  font-size: var(--text-xs);
+  font-size: 11px;
+  font-weight: 600;
   user-select: none;
-  transition: background .15s;
+  letter-spacing: 2px;
+  transition: all var(--transition-fast);
 }
 .left-toggle:hover { background: var(--paper-hover); color: var(--ink); }
-.toggle-label { letter-spacing: 3px; }
+.toggle-label { letter-spacing: 4px; }
 
 /* Center panel */
 .center-panel {
@@ -716,8 +794,8 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 
 /* Right panel */
 .right-panel {
-  width: 350px;
-  min-width: 350px;
+  width: 370px;
+  min-width: 370px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -729,7 +807,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 .panel-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   background: var(--paper-warm);
   border-bottom: 1px solid var(--rule);
@@ -741,7 +819,9 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   letter-spacing: .03em;
 }
 .center-panel .panel-head { background: var(--paper-white); }
+.panel-collapse-btn { margin-left: auto; }
 .doc-meta {
+  margin-left: auto;
   font-family: var(--font-body);
   font-weight: 400;
   font-size: var(--text-xs);
@@ -764,6 +844,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   word-break: break-all;
   font-size: var(--text-sm);
   color: var(--ink-soft);
+  padding: var(--space-4) var(--space-5);
 }
 .template-body .para-block + .para-block {
   margin-top: var(--space-3);
@@ -774,8 +855,8 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   font-family: var(--font-display);
   font-size: 16px;
   color: var(--ink);
-  padding: var(--space-5) var(--space-6);
-  line-height: 1.9;
+  padding: var(--space-5) var(--space-8);
+  line-height: 2;
 }
 .doc-body .para-block {
   padding: var(--space-2) var(--space-3);
@@ -785,14 +866,14 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 .doc-body .para-block + .para-block {
   margin-top: var(--space-2);
   padding-top: var(--space-3);
-  border-top: 1px dashed var(--rule-light);
+  border-top: 1px solid var(--rule-light);
 }
 
 .deleted-placeholder {
-  padding: var(--space-3) var(--space-2);
-  margin: var(--space-3) 0;
-  border: 1px dashed var(--danger);
-  border-left: 3px solid var(--danger);
+  padding: var(--space-3);
+  margin: var(--space-2) 0;
+  border: 1px solid var(--danger-border);
+  border-left: 4px solid var(--danger);
   background: var(--danger-soft);
   border-radius: var(--radius-sm);
   text-align: center;
@@ -800,7 +881,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 .placeholder-text {
   font-size: var(--text-sm);
   color: var(--danger);
-  font-weight: 500;
+  font-weight: 600;
 }
 .deleted-placeholder + .para-block {
   border-top: none;
@@ -811,17 +892,17 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 /* Template fillable mark */
 .tpl-fillable {
   background: var(--amber-soft);
-  padding: 1px 3px;
+  padding: 1px 4px;
   border-radius: var(--radius-sm);
-  border-bottom: 2px dashed var(--amber);
+  border-bottom: 2px solid var(--amber);
 }
 
 /* ---- Diff segments ---- */
 .seg-insert {
   background: var(--danger-soft);
   border-bottom: 2px solid var(--danger);
-  padding: 1px 2px;
-  border-radius: 2px;
+  padding: 2px 3px;
+  border-radius: var(--radius-sm);
 }
 .seg-delete {
   display: inline-block;
@@ -829,27 +910,27 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   background: var(--danger);
   font-size: 10px;
   font-weight: 700;
-  padding: 0 3px;
+  padding: 0 4px;
   border-radius: var(--radius-sm);
-  margin: 0 1px;
+  margin: 0 2px;
 }
 .seg-replace {
   background: var(--primary-soft);
   border-bottom: 2px solid var(--primary);
-  padding: 1px 2px;
-  border-radius: 2px;
+  padding: 2px 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Field segments */
 .field-pass {
   background: var(--ink-green-soft);
-  padding: 1px 3px;
+  padding: 2px 4px;
   border-radius: var(--radius-sm);
   border-bottom: 2px solid var(--ink-green);
 }
 .field-fail {
   background: var(--amber-soft);
-  padding: 1px 3px;
+  padding: 2px 4px;
   border-radius: var(--radius-sm);
   border-bottom: 2px solid var(--amber);
 }
@@ -860,43 +941,41 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 .flash-amber { animation: flashAmber 0.4s ease 3; }
 @keyframes flashAmber { 50% { background: var(--amber-soft); } }
 
-/* ---- Filter bar: stamp buttons ---- */
+/* ---- Filter bar ---- */
 .filter-bar {
   display: flex;
   flex-shrink: 0;
-  padding: var(--space-3) var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
   gap: var(--space-2);
 }
 .stamp-btn {
   flex: 1;
-  padding: var(--space-2) var(--space-2);
+  padding: 9px var(--space-2);
   border: 1.5px solid var(--rule);
   background: var(--paper-white);
   color: var(--ink-soft);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: all .15s;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  position: relative;
+  gap: 6px;
 }
-.stamp-btn:hover:not(:disabled) { border-color: var(--ink-muted); color: var(--ink); }
-.stamp-btn:disabled { opacity: .3; cursor: not-allowed; }
-.stamp-btn.active { color: var(--paper-white); }
+.stamp-btn:hover:not(:disabled) { border-color: var(--ink-muted); color: var(--ink); background: var(--paper-warm); }
+.stamp-btn:disabled { opacity: .35; cursor: not-allowed; }
+.stamp-btn.active { color: var(--paper-white); border-color: transparent; }
 
-.stamp-tamper.active { background: var(--danger); border-color: var(--danger); }
-.stamp-validate.active { background: var(--amber); border-color: var(--amber); }
-.stamp-all.active { background: var(--ink); border-color: var(--ink); }
+.stamp-tamper.active { background: var(--danger); }
+.stamp-validate.active { background: var(--amber); }
+.stamp-all.active { background: var(--ink); }
 
 .stamp-num {
-  font-size: 10px;
-  font-weight: 500;
-  opacity: .7;
-  min-width: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: .8;
 }
 
 /* ---- Result blocks ---- */
@@ -907,71 +986,81 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   min-height: 0;
   overflow: hidden;
 }
-.result-block + .result-block { border-top: 3px solid var(--rule); }
+.result-block + .result-block { border-top: 2px solid var(--rule); }
 
 .block-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--ink);
   flex-shrink: 0;
+  border-bottom: 1px solid var(--rule);
 }
-.compare-block .block-head { background: var(--danger-soft); border-bottom: 1px solid var(--danger-border); }
-.validate-block .block-head { background: var(--amber-soft); border-bottom: 1px solid var(--amber-border); }
-.vali-summary { font-weight: 400; font-size: var(--text-xs); color: var(--amber); }
+.compare-block .block-head { background: var(--danger-soft); }
+.validate-block .block-head { background: var(--amber-soft); }
+.vali-summary { margin-left: auto; font-weight: 500; font-size: var(--text-xs); color: var(--amber); }
 
 .block-body {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-4);
 }
 
 /* Empty state */
 .empty-state {
   text-align: center;
-  padding: var(--space-5) 0;
+  padding: var(--space-6) 0;
   color: var(--ink-green);
 }
-.empty-state p { margin-top: var(--space-2); font-size: var(--text-sm); }
+.empty-state p { margin-top: var(--space-2); font-size: var(--text-sm); font-weight: 500; }
 
 /* Violation items */
 .vio-item {
   padding: var(--space-3);
-  border: 1px solid var(--danger-border);
+  border: 1px solid var(--rule);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-2);
   cursor: pointer;
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-3);
   align-items: flex-start;
   background: var(--paper-white);
-  transition: all .15s;
+  transition: all var(--transition-fast);
 }
-.vio-item:hover { background: var(--danger-soft); }
+.vio-item:hover {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  transform: translateX(2px);
+}
 .vio-stamp {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
-  height: 22px;
-  padding: 0 5px;
-  font-size: 10px;
+  min-width: 40px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 11px;
   font-weight: 700;
   border: 1.5px solid;
   border-radius: var(--radius-sm);
-  transform: rotate(-3deg);
+  letter-spacing: .04em;
 }
 .vio-stamp.stamp-insert { color: var(--ink-blue); border-color: var(--ink-blue); }
 .vio-stamp.stamp-delete { color: var(--danger); border-color: var(--danger); }
 .vio-stamp.stamp-replace { color: var(--amber); border-color: var(--amber); }
-.vio-body { min-width: 0; }
-.vio-row { font-size: var(--text-xs); line-height: 1.8; word-break: break-all; }
+.vio-body { min-width: 0; flex: 1; }
+.vio-row {
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  word-break: break-all;
+}
+.vio-row + .vio-row { margin-top: var(--space-1); }
 .vio-row.tpl { color: var(--ink-muted); }
-.vio-row.act { color: var(--danger); }
+.vio-row.act { color: var(--danger); font-weight: 500; }
 
 /* Field items */
 .field-item {
@@ -980,25 +1069,28 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   margin-bottom: var(--space-2);
   cursor: pointer;
   background: var(--paper-white);
-  transition: all .15s;
+  border: 1px solid var(--rule);
+  transition: all var(--transition-fast);
 }
-.field-ok { border: 1px solid var(--ink-green-border); border-left: 3px solid var(--ink-green); }
-.field-ok:hover { background: var(--ink-green-soft); }
-.field-ng { border: 1px solid var(--amber-border); border-left: 3px solid var(--amber); }
-.field-ng:hover { background: var(--amber-soft); }
+.field-item:hover { transform: translateX(2px); }
+.field-ok { border-left: 3px solid var(--ink-green); }
+.field-ok:hover { border-color: var(--ink-green-border); background: var(--ink-green-soft); }
+.field-ng { border-left: 3px solid var(--amber); }
+.field-ng:hover { border-color: var(--amber-border); background: var(--amber-soft); }
 
-.field-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1); }
-.field-name { font-weight: 600; font-size: var(--text-sm); }
+.field-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+.field-name { font-weight: 600; font-size: var(--text-sm); color: var(--ink); flex: 1; }
 .field-badge {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 1px 8px;
-  border-radius: 10px;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  letter-spacing: .04em;
 }
 .badge-ok { background: var(--ink-green-soft); color: var(--ink-green); }
 .badge-ng { background: var(--amber-soft); color: var(--amber); }
 
-.field-rule { font-size: var(--text-xs); color: var(--ink-muted); }
+.field-rule { font-size: var(--text-sm); color: var(--ink-muted); }
 .field-value { font-size: var(--text-sm); color: var(--ink); margin-top: var(--space-1); word-break: break-all; }
-.field-reason { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--danger); }
+.field-reason { margin-top: var(--space-1); font-size: var(--text-sm); color: var(--danger); font-weight: 500; }
 </style>

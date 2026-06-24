@@ -238,7 +238,7 @@ function updateZoneFocus() {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-5) var(--space-6);
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
   width: 100%;
 }

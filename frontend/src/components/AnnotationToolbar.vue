@@ -40,18 +40,20 @@
       <!-- Rules config -->
       <div v-if="showFillableRules" class="rules-box">
         <h4 class="rules-title">{{ editingAnnotation ? `编辑规则` : '填写校验规则' }}</h4>
-        <el-form label-width="72px" size="small">
+        <el-form label-width="80px" size="small">
           <el-form-item label="字段名称">
             <el-input v-model="rules.field_name" placeholder="如：公司名称" />
           </el-form-item>
           <el-form-item label="必填">
             <el-switch v-model="rules.required" />
           </el-form-item>
-          <el-form-item label="最少字数">
-            <el-input-number v-model="rules.min_chars" :min="0" :max="500" />
-          </el-form-item>
-          <el-form-item label="最多字数">
-            <el-input-number v-model="rules.max_chars" :min="1" :max="1000" />
+          <el-form-item label="字数限制">
+            <div style="display:flex;align-items:center;gap:8px;width:100%">
+              <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">最少</span>
+              <el-input-number v-model="rules.min_chars" :min="0" :max="500" size="small" style="flex:1" />
+              <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">最多</span>
+              <el-input-number v-model="rules.max_chars" :min="1" :max="1000" size="small" style="flex:1" />
+            </div>
           </el-form-item>
           <el-form-item label="字符类型">
             <el-select v-model="rules.allowed_chars">
@@ -65,18 +67,23 @@
           <el-form-item v-if="rules.allowed_chars === 'regex'" label="正则">
             <el-input v-model="rules.regex" placeholder="如: ^1[3-9]\d{9}$" />
           </el-form-item>
-          <el-form-item label="允许值">
-            <div class="av-list">
-              <el-tag v-for="(v, i) in rules.allowed_values" :key="i" closable size="small"
-                @close="removeAllowedValue(i)">{{ v }}</el-tag>
-              <span v-if="rules.allowed_values.length === 0" class="av-empty">暂无，请在下方添加</span>
+          <div class="av-block">
+            <span class="av-label">允许值</span>
+            <div class="av-body">
+              <div class="av-header">
+                <span v-if="rules.allowed_values.length === 0" class="av-empty">暂无，请在下方添加</span>
+              </div>
+              <div class="av-list">
+                <el-tag v-for="(v, i) in rules.allowed_values" :key="i" closable size="small"
+                  @close="removeAllowedValue(i)">{{ v }}</el-tag>
+              </div>
+              <div class="av-input-row">
+                <el-input v-model="allowedValueInput" placeholder="输入允许值后回车" size="small"
+                  @keyup.enter="addAllowedValue" />
+                <el-button @click="addAllowedValue" size="small" :disabled="!allowedValueInput.trim()">添加</el-button>
+              </div>
             </div>
-            <div class="av-input-row">
-              <el-input v-model="allowedValueInput" placeholder="输入允许值后回车" size="small"
-                @keyup.enter="addAllowedValue" />
-              <el-button @click="addAllowedValue" size="small" :disabled="!allowedValueInput.trim()">添加</el-button>
-            </div>
-          </el-form-item>
+          </div>
           <el-form-item label="匹配字段">
             <el-select v-model="rules.match_fields" multiple clearable placeholder="选择需一致的字段"
               size="small" style="width:100%">
@@ -152,9 +159,11 @@
       </div>
     </div>
 
-    <el-button type="primary" @click="save" :loading="saving" size="large" style="width:100%">
-      保存标注
-    </el-button>
+    <div class="save-area">
+      <el-button type="primary" @click="save" :loading="saving" size="large" class="save-btn">
+        保存标注
+      </el-button>
+    </div>
   </div>
 </template>
 
@@ -485,29 +494,83 @@ function save() { emit('save') }
 /* Rules box */
 .rules-box {
   margin-top: var(--space-3);
-  padding: var(--space-3);
   background: var(--paper-white);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 .rules-title {
   font-family: var(--font-display);
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--ink);
-  margin: 0 0 var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper-warm);
+  border-bottom: 1px solid var(--rule);
+}
+.rules-box :deep(.el-form) {
+  padding: var(--space-3) var(--space-4);
+}
+.rules-box :deep(.el-divider) {
+  margin: 18px 0;
+}
+.rules-box :deep(.el-divider__text) {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--paper-white);
+}
+.rules-box :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+.rules-box :deep(.el-form-item__label) {
+  font-size: 13px;
+  font-weight: 500;
+}
+.rules-box .btn-row {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--rule);
 }
 
 /* Allowed values */
+.av-block {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+.av-block .av-label {
+  width: 80px;
+  flex-shrink: 0;
+  font-size: var(--el-form-label-font-size);
+  color: var(--el-text-color-regular);
+  text-align: right;
+  padding-right: 12px;
+  line-height: 32px;
+}
+.av-block .av-body {
+  flex: 1;
+  min-width: 0;
+}
+.av-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.av-empty {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.av-empty {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
 .av-list {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 6px;
-}
-.av-empty {
-  font-size: var(--text-xs);
-  color: var(--ink-muted);
 }
 .av-input-row {
   display: flex;
@@ -607,9 +670,9 @@ function save() { emit('save') }
 
 .ann-tag {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: var(--radius-sm);
 }
 .ann-tag.fixed { background: var(--primary-soft); color: var(--primary); }
@@ -617,12 +680,12 @@ function save() { emit('save') }
 .ann-tag.variable { background: #fef3c7; color: #d97706; }
 
 .ann-loc {
-  font-size: var(--text-xs);
+  font-size: 13px;
   color: var(--ink-soft);
   font-family: var(--font-mono);
 }
 .ann-field {
-  font-size: var(--text-xs);
+  font-size: 13px;
   color: var(--ink);
   font-weight: 500;
 }
@@ -651,8 +714,11 @@ function save() { emit('save') }
 }
 
 /* Save button area */
-.toolbar > .el-button {
-  margin: var(--space-3) var(--space-4);
+.save-area {
+  padding: var(--space-3);
   flex-shrink: 0;
+}
+.save-btn {
+  width: 100%;
 }
 </style>

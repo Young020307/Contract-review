@@ -6,7 +6,7 @@
         <span class="page-subtitle">上传并标注合同模板，用于后续智能审查</span>
       </div>
       <el-upload :show-file-list="false" :before-upload="handleUpload" accept=".docx">
-        <el-button type="primary" size="large">
+        <el-button type="primary" size="large" class="upload-btn">
           <el-icon><UploadFilled /></el-icon>
           上传模板
         </el-button>
@@ -114,13 +114,13 @@ async function handleUpload(file: File) {
 }
 .page-title {
   font-family: var(--font-display);
-  font-size: var(--text-xl);
+  font-size: 26px;
   font-weight: 700;
   color: var(--ink);
   letter-spacing: .02em;
 }
 .page-subtitle {
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--ink-muted);
 }
 
@@ -136,8 +136,13 @@ async function handleUpload(file: File) {
   box-shadow: var(--shadow-lg);
 }
 
-.table-card :deep(.el-table) { border: none; }
+.table-card :deep(.el-table) { border: none; font-size: 15px; }
+.table-card :deep(.el-table td) { padding: 16px 0; }
+.table-card :deep(.el-table th) { padding: 16px 0; font-size: 15px; }
 .table-card :deep(.el-table::before) { display: none; }
 .table-card :deep(.el-table__inner-wrapper::before) { display: none; }
-.table-card :deep(.el-button--small) { border-radius: var(--radius-sm); }
+.table-card :deep(.el-tag) { font-size: 13px; }
+.table-card :deep(.el-button--small) { border-radius: var(--radius-sm); font-size: 14px; }
+.upload-btn { --el-button-bg-color: var(--primary); --el-button-border-color: var(--primary); font-size: 16px; }
+.upload-btn:hover { --el-button-bg-color: #1d4ed8; --el-button-border-color: #1d4ed8; }
 </style>

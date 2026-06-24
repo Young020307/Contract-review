@@ -9,10 +9,6 @@
         <span class="topbar-divider">|</span>
         <span class="topbar-title">正在标注：{{ templateName }}</span>
       </div>
-      <el-button type="primary" @click="handleSave" :loading="saving">
-        <el-icon><Check /></el-icon>
-        保存标注
-      </el-button>
     </div>
     <div class="wb-main">
       <div class="wb-left">
@@ -57,7 +53,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Check } from '@element-plus/icons-vue'
+import { ArrowLeft } from '@element-plus/icons-vue'
 import { getTemplate, saveAnnotations, getAnnotations } from '../api'
 import type { AnnotationItem, ParagraphInfo } from '../types'
 import DocxPreview from '../components/DocxPreview.vue'
@@ -396,7 +392,7 @@ async function handleSave() {
 }
 
 .wb-right {
-  width: 380px;
+  width: 500px;
   flex-shrink: 0;
   border-left: 1px solid var(--rule);
   background: var(--paper-white);
