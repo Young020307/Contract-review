@@ -24,7 +24,8 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
         "regex": "",
         "allowed_values": [],
         "match_field": "",
-        "radio_group": ""
+        "radio_group": "",
+        "dependent_paras": []
     }
 
     tb = text_before.strip()
