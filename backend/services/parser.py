@@ -205,6 +205,13 @@ class DocxParser:
         doc_doc = Document(doc_file_path)
         tpl_texts = _get_all_texts(template_doc)
         doc_texts = _get_all_texts(doc_doc)
+
+        # Compute paragraph alignment
+        tpl_paras = DocxParser.parse(template_file_path)
+        doc_paras = DocxParser.parse(doc_file_path)
+        alignment = DocxParser.align_paragraphs(tpl_paras, doc_paras, annotations)
+        para_map = alignment["mapping"]
+
         values = {}
 
         ann_by_para: dict[int, list[dict]] = {}
@@ -215,11 +222,14 @@ class DocxParser:
             ann_by_para.setdefault(pi, []).append(ann)
 
         for pi, anns in ann_by_para.items():
-            if pi >= len(tpl_texts) or pi >= len(doc_texts):
+            if pi >= len(tpl_texts):
+                continue
+            doc_pi = para_map.get(pi)
+            if doc_pi is None or doc_pi >= len(doc_texts):
                 continue
 
             tpl_text = tpl_texts[pi]
-            doc_text = doc_texts[pi]
+            doc_text = doc_texts[doc_pi]
             if not tpl_text:
                 continue
 
@@ -287,6 +297,12 @@ class DocxParser:
         tpl_texts = _get_all_texts(template_doc)
         doc_texts = _get_all_texts(doc_doc)
 
+        # Compute paragraph alignment
+        tpl_paras = DocxParser.parse(template_file_path)
+        doc_paras = DocxParser.parse(doc_file_path)
+        alignment = DocxParser.align_paragraphs(tpl_paras, doc_paras, annotations)
+        para_map = alignment["mapping"]
+
         # Filter to checkbox-relevant annotations
         checkbox_anns = []
         for ann in annotations:
@@ -306,12 +322,15 @@ class DocxParser:
         statuses = {}
         for ann in checkbox_anns:
             pi = ann["paragraph_index"]
-            if pi >= len(tpl_texts) or pi >= len(doc_texts):
+            if pi >= len(tpl_texts):
+                continue
+            doc_pi = para_map.get(pi)
+            if doc_pi is None or doc_pi >= len(doc_texts):
                 continue
 
             start = max(0, ann.get("start_char", 0))
             end = max(start + 1, ann.get("end_char", start + 1))
-            doc_text = doc_texts[pi]
+            doc_text = doc_texts[doc_pi]
 
             if start < len(doc_text):
                 doc_char = doc_text[start:min(end, len(doc_text))]

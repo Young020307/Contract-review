@@ -199,7 +199,9 @@ def test_paragraph_count_mismatch():
             {"paragraph_index": 2, "start_char": 0, "end_char": 5, "zone_type": "fillable"},
         ]
         values = DocxParser.extract_fillable_values(tpl, doc, annotations)
-        assert "0_0" in values, f"FAIL: para 0 should be extracted"
+        # Both paras have full-text fillable annotations (empty skeleton);
+        # alignment can't match empty skeletons, so both map to None.
+        assert "0_0" not in values, f"FAIL: empty-skeleton para 0 should be skipped"
         assert "2_0" not in values, f"FAIL: para 2 should be skipped"
         print("  PASS")
 
@@ -293,6 +295,50 @@ def test_align_no_annotations():
         print("  PASS")
 
 
+def test_extract_with_inserted_paragraph():
+    """Document has an extra paragraph -> fillable values after it still extract."""
+    print("Test 13: extract values with inserted paragraph")
+    with tempfile.TemporaryDirectory() as tmp:
+        tpl = os.path.join(tmp, "tpl.docx")
+        doc = os.path.join(tmp, "doc.docx")
+        make_docx(["甲方：_____", "乙方：_____", "金额：_____元"], tpl)
+        make_docx(["甲方：阿里", "新增条款内容", "乙方：腾讯", "金额：5000元"], doc)
+
+        annotations = [
+            {"paragraph_index": 0, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 1, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 2, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+        ]
+        values = DocxParser.extract_fillable_values(tpl, doc, annotations)
+
+        assert values["0_3"]["value"] == "阿里", f"FAIL: para 0: '{values['0_3']}'"
+        assert values["1_3"]["value"] == "腾讯", f"FAIL: para 1: '{values.get('1_3', 'MISSING')}'"
+        assert values["2_3"]["value"] == "5000", f"FAIL: para 2: '{values.get('2_3', 'MISSING')}'"
+        print("  PASS")
+
+
+def test_extract_with_deleted_paragraph():
+    """Document missing a paragraph -> its fields skipped, subsequent ones intact."""
+    print("Test 14: extract values with deleted paragraph")
+    with tempfile.TemporaryDirectory() as tmp:
+        tpl = os.path.join(tmp, "tpl.docx")
+        doc = os.path.join(tmp, "doc.docx")
+        make_docx(["甲方：_____", "乙方：_____", "金额：_____元"], tpl)
+        make_docx(["甲方：阿里", "金额：5000元"], doc)
+
+        annotations = [
+            {"paragraph_index": 0, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 1, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 2, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+        ]
+        values = DocxParser.extract_fillable_values(tpl, doc, annotations)
+
+        assert values["0_3"]["value"] == "阿里", f"FAIL: para 0: '{values['0_3']}'"
+        assert "1_3" not in values, f"FAIL: deleted para should be absent"
+        assert values["2_3"]["value"] == "5000", f"FAIL: para 2: '{values.get('2_3', 'MISSING')}'"
+        print("  PASS")
+
+
 if __name__ == "__main__":
     all_pass = True
     tests = [
@@ -308,6 +354,8 @@ if __name__ == "__main__":
         test_align_insert_middle,
         test_align_delete_middle,
         test_align_no_annotations,
+        test_extract_with_inserted_paragraph,
+        test_extract_with_deleted_paragraph,
     ]
     for t in tests:
         try:
