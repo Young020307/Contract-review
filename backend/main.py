@@ -301,6 +301,8 @@ def review_compare(body: ReviewRequest):
 
         result["paragraph_mapping"] = alignment["mapping"]
         result["inserted_paragraphs"] = alignment["inserted"]
+        result["template_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in template_paras]
+        result["document_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in doc_paras]
 
         conn.execute(
             "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'compare', ?)",
