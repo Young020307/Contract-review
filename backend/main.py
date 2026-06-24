@@ -430,8 +430,10 @@ def review_validate(body: ReviewRequest):
 
         # Cross-paragraph dependent check: dependent_paras fillable zones
         # are optional when checked, must be empty when unchecked.
-        # Pre-scan: for each dependent paragraph, is ANY governing checkbox checked?
+        # When checked: if ANY dependent paragraph has content → ALL pass.
+        # When unchecked: each paragraph checked independently.
         dep_para_any_checked: dict[int, bool] = {}
+        dep_group_any_content: dict[int, bool] = {}
         for a in ann_list:
             if a.get("zone_type") != "fillable":
                 continue
@@ -442,8 +444,25 @@ def review_validate(body: ReviewRequest):
             pi = a["paragraph_index"]
             key = f"{pi}_{a.get('start_char', 0)}"
             is_checked = values.get(key, {}).get("checked", False)
+
             for dep_pi in deps:
                 dep_para_any_checked[dep_pi] = dep_para_any_checked.get(dep_pi, False) or is_checked
+
+            if is_checked:
+                group_any = False
+                for dep_pi in deps:
+                    for r in result["results"]:
+                        if r["paragraph"] != dep_pi:
+                            continue
+                        v = values.get(f"{dep_pi}_{r.get('start_char', 0)}", {})
+                        actual = v.get("value", "") if isinstance(v, dict) else (v or "")
+                        if bool(str(actual).strip("_ ")):
+                            group_any = True
+                            break
+                    if group_any:
+                        break
+                for dep_pi in deps:
+                    dep_group_any_content[dep_pi] = dep_group_any_content.get(dep_pi, False) or group_any
 
         for r in result["results"]:
             pi = r["paragraph"]
@@ -466,14 +485,20 @@ def review_validate(body: ReviewRequest):
             actual = v.get("value", "") if isinstance(v, dict) else (v or "")
             has_content = bool(str(actual).strip("_ "))
 
-            if not dep_para_any_checked[pi]:
+            if dep_para_any_checked[pi]:
+                if not dep_group_any_content.get(pi, False):
+                    r["pass"] = False
+                    r["reason"] = "该条款已勾选，需填写内容"
+                else:
+                    r["pass"] = True
+                    r["reason"] = ""
+            else:
                 if has_content:
                     r["pass"] = False
                     r["reason"] = "该条款未勾选，不应填写内容"
                 else:
                     r["pass"] = True
                     r["reason"] = ""
-            # any governing checkbox is checked → PASS either way
 
         result["results"].sort(key=lambda r: r["pass"])
 
