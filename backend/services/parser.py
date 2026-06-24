@@ -112,6 +112,85 @@ class DocxParser:
         return "\n".join(texts)
 
     @staticmethod
+    def _get_fixed_text_per_para(text: str, fillable_ranges: list[tuple[int, int]]) -> str:
+        """Remove fillable zones from a single paragraph's text, returning the skeleton."""
+        if not fillable_ranges:
+            return text
+        sorted_ranges = sorted(fillable_ranges, key=lambda r: r[0])
+        fixed_parts = []
+        pos = 0
+        for start, end in sorted_ranges:
+            if pos < start:
+                fixed_parts.append(text[pos:start])
+            pos = max(pos, end)
+        if pos < len(text):
+            fixed_parts.append(text[pos:])
+        return "".join(fixed_parts)
+
+    @staticmethod
+    def align_paragraphs(tpl_paras: list[dict], doc_paras: list[dict],
+                         annotations: list[dict]) -> dict:
+        """Align template paragraphs to document paragraphs via skeleton-text matching.
+
+        Returns {"mapping": {tpl_idx: doc_idx|None}, "inserted": [doc_idx, ...]}
+        """
+        from difflib import SequenceMatcher
+
+        ann_by_para: dict[int, list[dict]] = {}
+        for a in annotations:
+            if a.get("zone_type") != "fillable":
+                continue
+            ann_by_para.setdefault(a["paragraph_index"], []).append(a)
+
+        tpl_skeletons = []
+        for p in tpl_paras:
+            ranges = [(a["start_char"], a["end_char"])
+                      for a in ann_by_para.get(p["index"], [])]
+            tpl_skeletons.append(
+                DocxParser._get_fixed_text_per_para(p["text"], ranges))
+
+        doc_texts = [p["text"] for p in doc_paras]
+
+        i, j = 0, 0
+        mapping: dict[int, int | None] = {}
+        inserted: list[int] = []
+
+        while i < len(tpl_skeletons) and j < len(doc_texts):
+            cur = SequenceMatcher(None, tpl_skeletons[i], doc_texts[j]).ratio()
+
+            skip = 0.0
+            if j + 1 < len(doc_texts):
+                skip = SequenceMatcher(None, tpl_skeletons[i], doc_texts[j + 1]).ratio()
+
+            drop = 0.0
+            if i + 1 < len(tpl_skeletons):
+                drop = SequenceMatcher(None, tpl_skeletons[i + 1], doc_texts[j]).ratio()
+
+            if cur >= 0.5:
+                mapping[i] = j
+                i += 1
+                j += 1
+            elif skip > cur:
+                inserted.append(j)
+                j += 1
+            elif drop > cur:
+                mapping[i] = None
+                i += 1
+            else:
+                mapping[i] = j
+                i += 1
+                j += 1
+
+        while i < len(tpl_skeletons):
+            mapping[i] = None
+            i += 1
+        while j < len(doc_texts):
+            inserted.append(j)
+            j += 1
+
+        return {"mapping": mapping, "inserted": inserted}
+
+    @staticmethod
     def extract_fillable_values(template_file_path: str, doc_file_path: str, annotations: list[dict]) -> dict:
         """Extract fillable values using regex context anchors.
 

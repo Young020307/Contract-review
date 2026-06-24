@@ -204,6 +204,95 @@ def test_paragraph_count_mismatch():
         print("  PASS")
 
 
+def test_align_identity():
+    """Same paragraphs → identity mapping."""
+    print("Test 9: identity alignment")
+    with tempfile.TemporaryDirectory() as tmp:
+        tpl = os.path.join(tmp, "tpl.docx")
+        doc = os.path.join(tmp, "doc.docx")
+        make_docx(["甲方：_____", "乙方：_____", "金额：_____元"], tpl)
+        make_docx(["甲方：阿里", "乙方：腾讯", "金额：5000元"], doc)
+
+        tpl_paras = DocxParser.parse(tpl)
+        doc_paras = DocxParser.parse(doc)
+        annotations = [
+            {"paragraph_index": 0, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 1, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 2, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+        ]
+        result = DocxParser.align_paragraphs(tpl_paras, doc_paras, annotations)
+
+        assert result["mapping"] == {0: 0, 1: 1, 2: 2}, f"FAIL: {result['mapping']}"
+        assert result["inserted"] == [], f"FAIL: {result['inserted']}"
+        print("  PASS")
+
+
+def test_align_insert_middle():
+    """Document has an extra paragraph in the middle."""
+    print("Test 10: insert paragraph in middle")
+    with tempfile.TemporaryDirectory() as tmp:
+        tpl = os.path.join(tmp, "tpl.docx")
+        doc = os.path.join(tmp, "doc.docx")
+        make_docx(["甲方：_____", "乙方：_____", "金额：_____元"], tpl)
+        make_docx(["甲方：阿里", "新增条款", "乙方：腾讯", "金额：5000元"], doc)
+
+        tpl_paras = DocxParser.parse(tpl)
+        doc_paras = DocxParser.parse(doc)
+        annotations = [
+            {"paragraph_index": 0, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 1, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 2, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+        ]
+        result = DocxParser.align_paragraphs(tpl_paras, doc_paras, annotations)
+
+        assert result["mapping"] == {0: 0, 1: 2, 2: 3}, f"FAIL: {result['mapping']}"
+        assert result["inserted"] == [1], f"FAIL: {result['inserted']}"
+        print("  PASS")
+
+
+def test_align_delete_middle():
+    """Document is missing a paragraph from the middle."""
+    print("Test 11: delete paragraph in middle")
+    with tempfile.TemporaryDirectory() as tmp:
+        tpl = os.path.join(tmp, "tpl.docx")
+        doc = os.path.join(tmp, "doc.docx")
+        make_docx(["甲方：_____", "乙方：_____", "金额：_____元"], tpl)
+        make_docx(["甲方：阿里", "金额：5000元"], doc)
+
+        tpl_paras = DocxParser.parse(tpl)
+        doc_paras = DocxParser.parse(doc)
+        annotations = [
+            {"paragraph_index": 0, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 1, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+            {"paragraph_index": 2, "start_char": 3, "end_char": 8, "zone_type": "fillable"},
+        ]
+        result = DocxParser.align_paragraphs(tpl_paras, doc_paras, annotations)
+
+        assert result["mapping"] == {0: 0, 1: None, 2: 1}, f"FAIL: {result['mapping']}"
+        assert result["inserted"] == [], f"FAIL: {result['inserted']}"
+        print("  PASS")
+
+
+def test_align_no_annotations():
+    """No annotations → full-text matching fallback."""
+    print("Test 12: alignment without annotations")
+    with tempfile.TemporaryDirectory() as tmp:
+        tpl = os.path.join(tmp, "tpl.docx")
+        doc = os.path.join(tmp, "doc.docx")
+        make_docx(["第一条 定义", "第二条 义务", "第三条 违约"], tpl)
+        make_docx(["第一条 定义", "新条款", "第二条 义务", "第三条 违约"], doc)
+
+        tpl_paras = DocxParser.parse(tpl)
+        doc_paras = DocxParser.parse(doc)
+        result = DocxParser.align_paragraphs(tpl_paras, doc_paras, [])
+
+        assert result["mapping"][0] == 0, f"FAIL: para 0 should match"
+        assert result["mapping"][1] == 2, f"FAIL: para 1→2, got {result['mapping']}"
+        assert result["mapping"][2] == 3, f"FAIL: para 2→3, got {result['mapping']}"
+        assert 1 in result["inserted"], f"FAIL: doc[1] should be inserted"
+        print("  PASS")
+
+
 if __name__ == "__main__":
     all_pass = True
     tests = [
@@ -215,6 +304,10 @@ if __name__ == "__main__":
         test_fallback_on_mismatch,
         test_no_fillable_annotations,
         test_paragraph_count_mismatch,
+        test_align_identity,
+        test_align_insert_middle,
+        test_align_delete_middle,
+        test_align_no_annotations,
     ]
     for t in tests:
         try:
