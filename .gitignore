@@ -21,8 +21,6 @@ Thumbs.db
 # Node
 node_modules/
 
-# Uploads
-backend/uploads/
 
 # Claude
 .claude/
