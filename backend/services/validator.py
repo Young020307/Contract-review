@@ -143,7 +143,11 @@ class RuleValidator:
     @staticmethod
     def _describe_rule(rules: dict) -> str:
         if rules.get("radio_group"):
-            return f"单选组:{rules['radio_group']}"
+            desc = f"单选组:{rules['radio_group']}"
+            deps = rules.get("dependent_paras", [])
+            if deps:
+                desc += f" 管辖段落:{','.join(str(p) for p in deps)}"
+            return desc
 
 
         parts = []
