@@ -107,8 +107,9 @@
         </div>
         <div class="panel-body doc-body" ref="docBody">
           <template v-for="item in displayItems" :key="item.key">
-            <div v-if="item.type === 'placeholder'" class="deleted-placeholder">
-              <span class="placeholder-text">该段内容被删除</span>
+            <div v-if="item.type === 'placeholder'" class="deleted-placeholder"
+              :ref="(el: any) => setPlaceholderRef(item.templateIndex, el)">
+              <span class="placeholder-text">模板整段内容被删除</span>
             </div>
             <div v-else class="para-block"
               :ref="(el: any) => setParaRef(item.para.index, el)">
@@ -220,12 +221,14 @@ const showTemplate = ref(false)
 const resultFilter = ref<'tamper' | 'validate' | 'all'>('all')
 const docBody = ref<HTMLDivElement | null>(null)
 const paraRefs = ref<Record<number, HTMLElement>>({})
+const placeholderRefs = ref<Record<number, HTMLElement>>({})
 const vioRefs = ref<Record<number, HTMLElement>>({})
 const fieldRefs = ref<Record<number, HTMLElement>>({})
 
 function setVioRef(i: number, el: any) { if (el) vioRefs.value[i] = el }
 function setFieldRef(i: number, el: any) { if (el) fieldRefs.value[i] = el }
 function setParaRef(index: number, el: any) { if (el) paraRefs.value[index] = el }
+function setPlaceholderRef(tplIdx: number, el: any) { if (el) placeholderRefs.value[tplIdx] = el }
 
 onMounted(async () => { templates.value = await listTemplates() })
 
@@ -275,6 +278,12 @@ const passCount = computed(() => {
   return validateResult.value.results.filter(r => r.pass).length
 })
 
+const activeTemplateParagraphCount = computed(() => {
+  const tid = activeDoc.value?.template_id
+  if (!tid) return 0
+  return templates.value.find(t => t.id === tid)?.paragraph_count ?? 0
+})
+
 // ---- Paragraph segmentation ----
 interface TextSeg { type: 'fixed' | 'fillable'; text: string; pass?: boolean; fieldIdx?: string }
 
@@ -312,7 +321,7 @@ const renderedParagraphs = computed<RenderedPara[]>(() => {
 })
 
 const displayItems = computed(() => {
-  const mapping = validateResult.value?.paragraph_mapping
+  const mapping = validateResult.value?.paragraph_mapping ?? compareResult.value?.paragraph_mapping
   if (!mapping) {
     return renderedParagraphs.value.map(p => ({ key: `p-${p.index}`, type: 'para' as const, para: p }))
   }
@@ -337,7 +346,8 @@ const displayItems = computed(() => {
     const rp = renderedParagraphs.value.find(r => r.index === p.index)
     if (rp) items.push({ key: `p-${p.index}`, type: 'para', para: rp })
   }
-  const tplCount = validateResult.value?.template_paragraphs?.length ?? 0
+  const tplCount = validateResult.value?.template_paragraphs?.length
+    ?? activeTemplateParagraphCount.value
   for (let d = lastTpl + 1; d < tplCount; d++) {
     items.push({ key: `del-${d}`, type: 'placeholder', templateIndex: d })
   }
@@ -455,17 +465,26 @@ function scrollToViolation(index: number) {
   const violations = compareResult.value.violations ?? []
   if (index >= violations.length) return
   const v = violations[index]
+
+  // Whole-paragraph deletion: the template paragraph is mapped to null
+  const mapping = compareResult.value?.paragraph_mapping
+  if (v.type === 'delete' && mapping && mapping[v.paragraph] === null) {
+    const el = placeholderRefs.value[v.paragraph]
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('flash-red')
+      setTimeout(() => el.classList.remove('flash-red'), 1500)
+    }
+    return
+  }
+
   const dr = v.doc_range
   const paras = docParagraphs.value
-  let prevPara: ParagraphInfo | null = null
   let goff = 0
   for (const p of paras) {
     const pend = goff + p.text.length
     if (dr[0] >= goff && dr[0] <= pend) {
-      // Delete at paragraph boundary -> scroll to previous paragraph
-      const targetIdx = (v.type === 'delete' && dr[0] === goff && prevPara)
-        ? prevPara.index : p.index
-      const el = paraRefs.value[targetIdx]
+      const el = paraRefs.value[p.index]
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
         el.classList.add('flash-red')
@@ -473,7 +492,6 @@ function scrollToViolation(index: number) {
       }
       return
     }
-    prevPara = p
     goff = pend + 1
   }
 }
@@ -800,8 +818,8 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 
 /* ---- Diff segments ---- */
 .seg-insert {
-  background: var(--primary-soft);
-  border-bottom: 2px solid var(--primary);
+  background: var(--danger-soft);
+  border-bottom: 2px solid var(--danger);
   padding: 1px 2px;
   border-radius: 2px;
 }
