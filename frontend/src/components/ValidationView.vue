@@ -30,10 +30,23 @@
         <span class="doc-name">已上传文件</span>
       </div>
       <div class="panel-body doc-body">
-        <div v-for="p in docParagraphs" :key="'d' + p.index" class="para-block" :ref="(el: any) => setParaRef(p.index, el)">
-          <span v-for="(seg, si) in p.segments" :key="si"
-            :class="seg.type === 'fillable' ? (seg.pass ? 'fill-pass' : 'fill-fail') : ''"
-          >{{ seg.text }}</span>
+        <div v-for="p in displayParagraphs" :key="'d' + p.index"
+          :class="['para-block', p.type === 'deleted' ? 'para-deleted' : '', p.type === 'inserted' ? 'para-inserted' : '']"
+          :ref="(el: any) => { if (p.docIndex != null) setParaRef(p.docIndex, el) }">
+          <template v-if="p.type === 'deleted'">
+            <span class="deleted-marker">已删除段落</span>
+            <span class="deleted-text">{{ p.text }}</span>
+          </template>
+          <template v-else-if="p.type === 'inserted'">
+            <span class="inserted-marker">新增</span>
+            <span>{{ p.text }}</span>
+          </template>
+          <template v-else>
+            <span v-if="p.paraNumber != null" class="para-num">{{ p.paraNumber }}</span>
+            <span v-for="(seg, si) in p.segments" :key="si"
+              :class="seg.type === 'fillable' ? (seg.pass ? 'fill-pass' : 'fill-fail') : ''"
+            >{{ seg.text }}</span>
+          </template>
         </div>
       </div>
     </div>
@@ -108,13 +121,81 @@ const templateParagraphs = computed(() => {
   }))
 })
 
-// Document: show ALL paragraphs with fillable zones highlighted (pass/fail)
-const docParagraphs = computed(() => {
+// Document: raw segments keyed by document paragraph index
+const docSegments = computed(() => {
   const allParas = props.result.document_paragraphs ?? []
-  return allParas.map(p => ({
-    index: p.index,
-    segments: splitWithFields(p.text, paraFieldsMap.value[p.index] || [], true)
-  }))
+  const map: Record<number, TextSeg[]> = {}
+  for (const p of allParas) {
+    map[p.index] = splitWithFields(p.text, paraFieldsMap.value[p.index] || [], true)
+  }
+  return map
+})
+
+const docParasRaw = computed(() => props.result.document_paragraphs ?? [])
+
+interface DisplayPara {
+  index: number; type: 'matched' | 'deleted' | 'inserted'
+  paraNumber?: number; docIndex?: number; text: string; segments: TextSeg[]
+}
+
+const displayParagraphs = computed<DisplayPara[]>(() => {
+  const mapping = props.result.paragraph_mapping
+  if (!mapping) {
+    return docParasRaw.value.map(p => ({
+      index: p.index, type: 'matched' as const, docIndex: p.index,
+      text: p.text, segments: docSegments.value[p.index] || []
+    }))
+  }
+
+  const insertedSet = new Set<number>(props.result.inserted_paragraphs ?? [])
+  const tplParas = props.result.template_paragraphs ?? []
+  if (!tplParas.length) {
+    return docParasRaw.value.map(p => ({
+      index: p.index, type: 'matched' as const, docIndex: p.index,
+      text: p.text, segments: docSegments.value[p.index] || []
+    }))
+  }
+
+  const result: DisplayPara[] = []
+  const usedDoc = new Set<number>()
+
+  for (const tp of tplParas) {
+    const docIdx = mapping[tp.index]
+
+    if (docIdx != null) {
+      for (const dp of docParasRaw.value) {
+        if (dp.index < docIdx && insertedSet.has(dp.index) && !usedDoc.has(dp.index)) {
+          result.push({
+            index: result.length, type: 'inserted', docIndex: dp.index,
+            text: dp.text, segments: [{ type: 'fixed', text: dp.text }]
+          })
+          usedDoc.add(dp.index)
+        }
+      }
+      const dp = docParasRaw.value.find(p => p.index === docIdx)
+      result.push({
+        index: result.length, type: 'matched', paraNumber: tp.index + 1, docIndex: docIdx,
+        text: dp?.text ?? '', segments: docSegments.value[docIdx] || []
+      })
+      usedDoc.add(docIdx)
+    } else {
+      result.push({
+        index: result.length, type: 'deleted', docIndex: undefined,
+        text: tp.text, segments: [{ type: 'fixed', text: tp.text }]
+      })
+    }
+  }
+
+  for (const dp of docParasRaw.value) {
+    if (insertedSet.has(dp.index) && !usedDoc.has(dp.index)) {
+      result.push({
+        index: result.length, type: 'inserted', docIndex: dp.index,
+        text: dp.text, segments: [{ type: 'fixed', text: dp.text }]
+      })
+    }
+  }
+
+  return result
 })
 
 function splitWithFields(text: string, fields: FieldResult[], markPass?: boolean): TextSeg[] {
@@ -255,6 +336,70 @@ function scrollToField(index: number) {
   padding: 20px 24px;
 }
 .doc-body .para-block + .para-block { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ebeef5; }
+
+/* Paragraph numbering */
+.para-num {
+  display: inline-block;
+  min-width: 32px;
+  margin-right: 6px;
+  color: #909399;
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+}
+
+/* Deleted paragraph placeholder */
+.para-deleted {
+  border: 2px dashed #faecd8 !important;
+  background: #fefcf6;
+  opacity: .6;
+  padding: 4px 10px;
+  border-radius: 3px;
+}
+.para-deleted + .para-deleted {
+  margin-top: 0 !important; padding-top: 4px !important;
+  border-top: none !important;
+}
+.deleted-marker {
+  display: inline-block;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 3px;
+  margin-right: 8px;
+  transform: rotate(-3deg);
+}
+.deleted-text {
+  text-decoration: line-through;
+  color: #909399;
+  font-size: 13px;
+}
+
+/* Inserted paragraph */
+.para-inserted {
+  background: #ecf5ff;
+  border-left: 3px solid #409eff;
+  padding: 4px 10px;
+  border-radius: 0 3px 3px 0;
+}
+.para-inserted + .para-inserted {
+  margin-top: 4px !important;
+  padding-top: 4px !important;
+  border-top: none !important;
+}
+.inserted-marker {
+  display: inline-block;
+  background: #409eff;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 3px;
+  margin-right: 8px;
+  transform: rotate(-3deg);
+}
 
 /* Fillable highlight styles */
 .tpl-fillable {

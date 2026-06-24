@@ -102,13 +102,24 @@
           <span class="doc-meta">{{ activeDoc?.name }}</span>
         </div>
         <div class="panel-body doc-body" ref="docBody">
-          <div v-for="p in renderedParagraphs" :key="'d' + p.index" class="para-block"
-            :ref="(el: any) => setParaRef(p.index, el)">
-            <span v-for="(seg, si) in p.segments" :key="si"
-              :class="segClass(seg.type)"
-              :style="seg.type !== 'fixed' ? 'cursor:pointer' : ''"
-              @click="seg.type !== 'fixed' && onSegmentClick(seg, p.index)"
-            >{{ seg.type === 'diff-delete' ? '▍' : seg.text }}</span>
+          <div v-for="p in displayParagraphs" :key="'d' + p.index"
+            :class="['para-block', p.type === 'deleted' ? 'para-deleted' : '', p.type === 'inserted' ? 'para-inserted' : '']"
+            :ref="(el: any) => { if (p.docIndex != null) setParaRef(p.docIndex, el) }">
+            <template v-if="p.type === 'deleted'">
+              <span class="deleted-marker">已删除段落</span>
+              <span class="deleted-text">{{ p.text }}</span>
+            </template>
+            <template v-else-if="p.type === 'inserted'">
+              <span class="inserted-marker">新增</span>
+              <span>{{ p.text }}</span>
+            </template>
+            <template v-else>
+              <span v-if="p.paraNumber != null" class="para-num">{{ p.paraNumber }}</span>
+              <span v-for="(seg, si) in p.segments" :key="si"
+                :class="segClass(seg.type)"
+                @click="seg.type !== 'fixed' && onSegmentClick(seg, p.index)"
+              >{{ seg.type === 'diff-delete' ? '▍' : seg.text }}</span>
+            </template>
           </div>
         </div>
       </div>
@@ -280,6 +291,7 @@ const templateParagraphs = computed(() => {
 
 const docParagraphs = computed<ParagraphInfo[]>(() => {
   if (validateResult.value?.document_paragraphs?.length) return validateResult.value.document_paragraphs
+  if (compareResult.value?.document_paragraphs?.length) return compareResult.value.document_paragraphs
   return activeDoc.value?.paragraphs ?? []
 })
 
@@ -300,6 +312,92 @@ const renderedParagraphs = computed<RenderedPara[]>(() => {
     const fields = fieldMap[p.index] || []
     return { index: p.index, segments: buildUnifiedSegs(p.text, globalOffsets[pi], hasCompare ? diffs : [], hasValidate ? fields : []) }
   })
+})
+
+interface DisplayPara {
+  index: number; type: 'matched' | 'deleted' | 'inserted'
+  paraNumber?: number; docIndex?: number; text: string; segments: DocSeg[]
+}
+
+const displayParagraphs = computed<DisplayPara[]>(() => {
+  const paras = docParagraphs.value
+  if (!paras.length) return []
+
+  const mapping = (validateResult.value?.paragraph_mapping ??
+                   compareResult.value?.paragraph_mapping) as Record<number, number | null> | undefined
+  if (!mapping) return renderedParagraphs.value.map(p => ({
+    index: p.index, type: 'matched' as const, docIndex: p.index, text: '', segments: p.segments
+  }))
+
+  const insertedSet = new Set<number>(
+    validateResult.value?.inserted_paragraphs ??
+    compareResult.value?.inserted_paragraphs ?? []
+  )
+
+  const tplParas = validateResult.value?.template_paragraphs ??
+                   (compareResult.value as any)?.template_paragraphs ?? []
+
+  if (!tplParas.length) {
+    return renderedParagraphs.value.map(p => ({
+      index: p.index, type: 'matched' as const, docIndex: p.index, text: '', segments: p.segments
+    }))
+  }
+
+  const fieldMap = buildFieldMap()
+  const diffs = compareResult.value?.diffs ?? []
+  const hasCompare = !!compareResult.value && (resultFilter.value === 'tamper' || resultFilter.value === 'all')
+  const hasValidate = !!validateResult.value && (resultFilter.value === 'validate' || resultFilter.value === 'all')
+  const globalOffsets: number[] = []
+  let offset = 0
+  for (const p of paras) { globalOffsets.push(offset); offset += p.text.length + 1 }
+
+  const result: DisplayPara[] = []
+  const usedDoc = new Set<number>()
+
+  for (const tp of tplParas) {
+    const docIdx = mapping[tp.index]
+
+    if (docIdx != null) {
+      // Insert preceding inserted paragraphs
+      for (const dp of paras) {
+        if (dp.index < docIdx && insertedSet.has(dp.index) && !usedDoc.has(dp.index)) {
+          result.push({
+            index: result.length, type: 'inserted', docIndex: dp.index,
+            text: dp.text, segments: [{ text: dp.text, type: 'fixed' }]
+          })
+          usedDoc.add(dp.index)
+        }
+      }
+      // Matched
+      const dp = paras.find(p => p.index === docIdx)
+      const gs = globalOffsets[docIdx] ?? 0
+      const fields = fieldMap[docIdx] || []
+      result.push({
+        index: result.length, type: 'matched', paraNumber: tp.index + 1, docIndex: docIdx,
+        text: dp?.text ?? '',
+        segments: buildUnifiedSegs(dp?.text ?? '', gs, hasCompare ? diffs : [], hasValidate ? fields : [])
+      })
+      usedDoc.add(docIdx)
+    } else {
+      // Deleted
+      result.push({
+        index: result.length, type: 'deleted', docIndex: undefined,
+        text: tp.text, segments: [{ text: tp.text, type: 'fixed' }]
+      })
+    }
+  }
+
+  // Remaining inserted at end
+  for (const dp of paras) {
+    if (insertedSet.has(dp.index) && !usedDoc.has(dp.index)) {
+      result.push({
+        index: result.length, type: 'inserted', docIndex: dp.index,
+        text: dp.text, segments: [{ text: dp.text, type: 'fixed' }]
+      })
+    }
+  }
+
+  return result
 })
 
 function buildTemplateFieldMap(): Record<number, FieldResult[]> {
@@ -678,6 +776,71 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px dashed var(--rule-light);
+}
+
+/* Paragraph numbering */
+.para-num {
+  display: inline-block;
+  min-width: 32px;
+  margin-right: 6px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+}
+
+/* Deleted paragraph placeholder */
+.para-deleted {
+  border: 2px dashed var(--rule) !important;
+  background: var(--paper-warm);
+  opacity: .6;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+.para-deleted + .para-deleted {
+  margin-top: 0 !important; padding-top: var(--space-1) !important;
+  border-top: none !important;
+}
+.deleted-marker {
+  display: inline-block;
+  background: var(--vermilion);
+  color: var(--paper-white);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  margin-right: var(--space-2);
+  transform: rotate(-3deg);
+}
+.deleted-text {
+  text-decoration: line-through;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+/* Inserted paragraph */
+.para-inserted {
+  background: var(--ink-blue-soft, #e8f4fd);
+  border-left: 3px solid var(--ink-blue, #409eff);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.para-inserted + .para-inserted {
+  margin-top: var(--space-1) !important;
+  padding-top: var(--space-1) !important;
+  border-top: none !important;
+}
+.inserted-marker {
+  display: inline-block;
+  background: var(--ink-blue, #409eff);
+  color: var(--paper-white);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  margin-right: var(--space-2);
+  transform: rotate(-3deg);
 }
 
 /* Template fillable mark */
