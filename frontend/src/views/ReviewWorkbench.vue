@@ -355,7 +355,8 @@ function buildFieldMap(): Record<number, FieldResult[]> {
   if (!validateResult.value) return map
   const mapping = validateResult.value.paragraph_mapping ?? {}
   for (const r of validateResult.value.results) {
-    const docPi = mapping[r.paragraph] ?? r.paragraph
+    const docPi = mapping[r.paragraph]
+    if (docPi == null) continue  // paragraph deleted — skip
     if (!map[docPi]) map[docPi] = []
     map[docPi].push(r)
   }

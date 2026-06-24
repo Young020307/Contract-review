@@ -334,6 +334,35 @@ for di in deleted_tpl:
     else:
         print(f"  T{di}: ✓ 占位符与违规一致 — '{tpl_text_short}'")
 
+# ── 7. 删除段标注泄露验证 ──
+# Catch the frontend bug: mapping[pi]=null → null ?? pi = pi
+# Deleted paragraph annotations leak onto unrelated document paragraphs
+print(f"\n删除段标注泄露检查 (mapping[pi]=null → null??pi=pi 导致泄露到 D{pi}):")
+leaked = 0
+for pi in deleted_tpl:
+    pi_anns = [a for a in fillable_anns if a["paragraph_index"] == pi]
+    if not pi_anns:
+        continue
+    leaked_to = pi  # the bug would map to this doc paragraph
+    if leaked_to < len(doc_paras):
+        field_name = ""
+        for a in pi_anns:
+            rules_str = a.get("rules", "{}")
+            try:
+                rules = json.loads(rules_str) if isinstance(rules_str, str) else rules_str
+                field_name = rules.get("field_name", "") or field_name
+            except Exception:
+                pass
+        doc_text = doc_paras[leaked_to]["text"][:60]
+        tpl_text_short = tpl_paras[pi]["text"][:40] if pi < len(tpl_paras) else "?"
+        leaked += len(pi_anns)
+        print(f"  ⚠ T{pi}「{field_name}」→ 会误显示在 D{leaked_to}「{doc_text}」")
+
+if leaked:
+    print(f"\n  ❌ {leaked} 个标注会泄露到错误的文档段落！前端 buildFieldMap 有 null?? 回退 bug")
+else:
+    print(f"  ✓ 无标注泄露")
+
 print(f"\n验证摘要:")
 print(f"  段落对齐: {'✓' if len(tpl_paras) - len(deleted_tpl) + len(inserted) == len(doc_paras) else '⚠ 可能不完整'}")
 print(f"  真实差异: {sum(1 for _ in real_deletions)} 处删除 + {sum(1 for v in violations if v['type']=='insert')} 处新增")
@@ -341,6 +370,7 @@ print(f"  审查违规: {len(violations)} 处")
 print(f"  可填充区提取: {len(values)}/{len(fillable_anns)}")
 print(f"  提取问题: {len(extraction_issues)} 个")
 print(f"  高亮问题: {len(highlight_issues)} 个")
+print(f"  标注泄露: {leaked} 个")
 print(f"  占位符: {placeholder_count} 个 (违规 {len(violations)} 处)")
 
 conn.close()
