@@ -142,7 +142,9 @@ function splitWithFields(text: string, fields: FieldResult[], markPass?: boolean
 function scrollToField(index: number) {
   const field = props.result.results[index]
   if (!field) return
-  const el = paraRefs.value[field.paragraph]
+  const mapping = props.result.paragraph_mapping ?? {}
+  const docPi = mapping[field.paragraph] ?? field.paragraph
+  const el = paraRefs.value[docPi]
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     el.classList.add('flash-highlight')

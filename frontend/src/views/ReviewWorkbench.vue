@@ -433,7 +433,9 @@ function scrollToField(index: number) {
   if (!validateResult.value) return
   const field = validateResult.value.results[index]
   if (!field) return
-  const el = paraRefs.value[field.paragraph]
+  const mapping = validateResult.value?.paragraph_mapping ?? {}
+  const docPi = mapping[field.paragraph] ?? field.paragraph
+  const el = paraRefs.value[docPi]
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     el.classList.add('flash-amber')
