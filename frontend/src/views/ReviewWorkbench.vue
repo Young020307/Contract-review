@@ -271,7 +271,7 @@ interface TextSeg { type: 'fixed' | 'fillable'; text: string; pass?: boolean; fi
 
 const templateParagraphs = computed(() => {
   const tps = validateResult.value?.template_paragraphs ?? []
-  const fieldMap = buildFieldMap()
+  const fieldMap = buildTemplateFieldMap()
   return tps.map(p => ({
     index: p.index,
     segments: splitByFields(p.text, fieldMap[p.index] || [])
@@ -301,6 +301,16 @@ const renderedParagraphs = computed<RenderedPara[]>(() => {
     return { index: p.index, segments: buildUnifiedSegs(p.text, globalOffsets[pi], hasCompare ? diffs : [], hasValidate ? fields : []) }
   })
 })
+
+function buildTemplateFieldMap(): Record<number, FieldResult[]> {
+  const map: Record<number, FieldResult[]> = {}
+  if (!validateResult.value) return map
+  for (const r of validateResult.value.results) {
+    if (!map[r.paragraph]) map[r.paragraph] = []
+    map[r.paragraph].push(r)
+  }
+  return map
+}
 
 function buildFieldMap(): Record<number, FieldResult[]> {
   const map: Record<number, FieldResult[]> = {}

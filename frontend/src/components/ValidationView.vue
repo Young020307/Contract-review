@@ -89,12 +89,22 @@ const paraFieldsMap = computed(() => {
   return map
 })
 
+// Build an unmapped field map for the template view
+const templateFieldMap = computed(() => {
+  const map: Record<number, FieldResult[]> = {}
+  for (const r of props.result.results) {
+    if (!map[r.paragraph]) map[r.paragraph] = []
+    map[r.paragraph].push(r)
+  }
+  return map
+})
+
 // Template: show ALL paragraphs with fillable zones highlighted
 const templateParagraphs = computed(() => {
   const allParas = props.result.template_paragraphs ?? []
   return allParas.map(p => ({
     index: p.index,
-    segments: splitWithFields(p.text, paraFieldsMap.value[p.index] || [])
+    segments: splitWithFields(p.text, templateFieldMap.value[p.index] || [])
   }))
 })
 
