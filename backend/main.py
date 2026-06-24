@@ -278,6 +278,11 @@ def review_compare(body: ReviewRequest):
         # Build global fillable zone ranges (in concatenated full text)
         fillable_ranges = _build_global_ranges(template_path, ann_list)
 
+        # Compute paragraph alignment for frontend display
+        template_paras = DocxParser.parse(template_path)
+        doc_paras = DocxParser.parse(doc_path)
+        alignment = DocxParser.align_paragraphs(template_paras, doc_paras, ann_list)
+
         result = DiffEngine.compare(template_text, doc_text)
         result["template_text"] = template_text
         result["document_text"] = doc_text
@@ -290,6 +295,9 @@ def review_compare(body: ReviewRequest):
             v for v in result["violations"]
             if not _is_fully_in_fillable(v, fillable_ranges)
         ]
+
+        result["paragraph_mapping"] = alignment["mapping"]
+        result["inserted_paragraphs"] = alignment["inserted"]
 
         conn.execute(
             "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'compare', ?)",
@@ -395,10 +403,16 @@ def review_validate(body: ReviewRequest):
         # Attach full paragraph text to each result for context display
         doc_paras_list = DocxParser.parse(doc_path)
         template_paras_list = DocxParser.parse(template_path)
+        alignment = DocxParser.align_paragraphs(template_paras_list, doc_paras_list, ann_list)
+        para_map = alignment["mapping"]
         doc_paras = {p["index"]: p["text"] for p in doc_paras_list}
         template_paras = {p["index"]: p["text"] for p in template_paras_list}
         for r in result["results"]:
-            r["paragraph_text"] = doc_paras.get(r["paragraph"], "")
+            doc_pi = para_map.get(r["paragraph"])
+            if doc_pi is not None:
+                r["paragraph_text"] = doc_paras.get(doc_pi, "")
+            else:
+                r["paragraph_text"] = ""
             r["template_paragraph_text"] = template_paras.get(r["paragraph"], "")
 
         # Checkbox-dependent sibling check: within a paragraph that has a
@@ -523,6 +537,9 @@ def review_validate(body: ReviewRequest):
         # Include ALL document and template paragraphs for full-text display
         result["document_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in doc_paras_list]
         result["template_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in template_paras_list]
+
+        result["paragraph_mapping"] = alignment["mapping"]
+        result["inserted_paragraphs"] = alignment["inserted"]
 
         conn.execute(
             "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'validate', ?)",
