@@ -39,13 +39,19 @@ class RuleValidator:
                 "reason": ""
             }
 
-            if rules.get("required", False) and not actual_value:
+            is_checkbox = bool(rules.get("radio_group"))
+
+            if rules.get("required", False) and not actual_value.strip("_ "):
                 field_result["pass"] = False
                 field_result["reason"] = "必填字段为空"
                 results.append(field_result)
                 continue
 
-            if not actual_value:
+            if not actual_value and not is_checkbox:
+                results.append(field_result)
+                continue
+
+            if is_checkbox:
                 results.append(field_result)
                 continue
 
@@ -106,11 +112,40 @@ class RuleValidator:
                 field_result["pass"] = False
                 field_result["reason"] = f"与「{match_field}」不一致"
 
+        # Radio group mutual-exclusion check
+        radio_groups: dict[str, list[dict]] = {}
+        for r in results:
+            ann = _find_annotation(annotations, r)
+            if not ann:
+                continue
+            rules = _parse_rules(ann.get("rules"))
+            rg = rules.get("radio_group", "")
+            if not rg:
+                continue
+            radio_groups.setdefault(rg, []).append(r)
+
+        for rg, group_results in radio_groups.items():
+            checked_count = sum(
+                1 for r in group_results
+                if values.get(f"{r['paragraph']}_{r['start_char']}", {}).get("checked")
+            )
+            if checked_count != 1:
+                for r in group_results:
+                    r["pass"] = False
+                    if checked_count == 0:
+                        r["reason"] = f"「{rg}」未选择任何选项"
+                    else:
+                        r["reason"] = f"「{rg}」只能选择一个选项（当前已选{checked_count}个）"
+
         results.sort(key=lambda r: r["pass"])
         return {"results": results}
 
     @staticmethod
     def _describe_rule(rules: dict) -> str:
+        if rules.get("radio_group"):
+            return f"单选组:{rules['radio_group']}"
+
+
         parts = []
         if rules.get("required"):
             parts.append("必填")
@@ -132,3 +167,21 @@ class RuleValidator:
         if match_field:
             parts.append(f"须同「{match_field}」")
         return "+".join(parts) if parts else "无规则"
+
+
+def _find_annotation(annotations: list[dict], field_result: dict) -> dict | None:
+    for a in annotations:
+        if (a.get("zone_type") == "fillable"
+                and a["paragraph_index"] == field_result["paragraph"]
+                and a.get("start_char", 0) == field_result["start_char"]):
+            return a
+    return None
+
+
+def _parse_rules(rules) -> dict:
+    if isinstance(rules, str):
+        try:
+            return json.loads(rules)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return rules or {}

@@ -1,3 +1,4 @@
+import json
 import re
 from docx import Document
 from docx.oxml.ns import qn
@@ -190,3 +191,60 @@ class DocxParser:
                     }
 
         return values
+
+    @staticmethod
+    def detect_checkbox_status(template_file_path: str, doc_file_path: str,
+                               annotations: list[dict]) -> dict:
+        """Detect whether □ checkbox zones have been toggled to ☑ in the document.
+
+        Only processes annotations whose rules include radio_group or checked=True.
+        Returns dict keyed by '{pi}_{start_char}' with shape:
+            {"checked": bool, "value": str, "doc_start": int, "doc_end": int}
+        """
+        CHECKED_CHARS = {'☑', '☒', '✓', '✔'}  # ☑ ☒ ✓ ✔
+
+        template_doc = Document(template_file_path)
+        doc_doc = Document(doc_file_path)
+        tpl_texts = _get_all_texts(template_doc)
+        doc_texts = _get_all_texts(doc_doc)
+
+        # Filter to checkbox-relevant annotations
+        checkbox_anns = []
+        for ann in annotations:
+            if ann.get("zone_type") != "fillable":
+                continue
+            rules = ann.get("rules", {})
+            if isinstance(rules, str):
+                try:
+                    rules = json.loads(rules)
+                except (json.JSONDecodeError, TypeError):
+                    rules = {}
+            if not rules or not isinstance(rules, dict):
+                continue
+            if rules.get("radio_group"):
+                checkbox_anns.append(ann)
+
+        statuses = {}
+        for ann in checkbox_anns:
+            pi = ann["paragraph_index"]
+            if pi >= len(tpl_texts) or pi >= len(doc_texts):
+                continue
+
+            start = max(0, ann.get("start_char", 0))
+            end = max(start + 1, ann.get("end_char", start + 1))
+            doc_text = doc_texts[pi]
+
+            if start < len(doc_text):
+                doc_char = doc_text[start:min(end, len(doc_text))]
+            else:
+                doc_char = ""
+
+            key = f"{pi}_{start}"
+            statuses[key] = {
+                "checked": bool(doc_char and all(c in CHECKED_CHARS for c in doc_char)),
+                "value": doc_char,
+                "doc_start": start,
+                "doc_end": min(end, len(doc_text))
+            }
+
+        return statuses

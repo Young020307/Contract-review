@@ -334,6 +334,24 @@ def _neutralize_fillable_diffs(diffs: list[dict], fillable_ranges: list[tuple[in
     return diffs
 
 
+def _find_checkbox_annotation(ann_list: list[dict], field_result: dict) -> dict | None:
+    for a in ann_list:
+        if (a.get("zone_type") == "fillable"
+                and a["paragraph_index"] == field_result.get("paragraph")
+                and a.get("start_char", 0) == field_result.get("start_char", 0)):
+            return a
+    return None
+
+
+def _parse_annotation_rules(rules) -> dict:
+    if isinstance(rules, str):
+        try:
+            return json.loads(rules)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return rules or {}
+
+
 @app.post("/api/review/validate")
 def review_validate(body: ReviewRequest):
     conn = get_connection()
@@ -350,6 +368,10 @@ def review_validate(body: ReviewRequest):
         ann_list = [dict(a) for a in annotations]
 
         values = DocxParser.extract_fillable_values(template["file_path"], document["file_path"], ann_list)
+        checkbox_statuses = DocxParser.detect_checkbox_status(
+            template["file_path"], document["file_path"], ann_list
+        )
+        values.update(checkbox_statuses)
         result = RuleValidator.validate(values, ann_list)
 
         # Attach full paragraph text to each result for context display
@@ -360,6 +382,53 @@ def review_validate(body: ReviewRequest):
         for r in result["results"]:
             r["paragraph_text"] = doc_paras.get(r["paragraph"], "")
             r["template_paragraph_text"] = template_paras.get(r["paragraph"], "")
+
+        # Checkbox-dependent sibling check: within a paragraph that has a
+        # checkbox, sibling fillable zones must be filled iff the box is ☑.
+        checkbox_checked: dict[int, bool] = {}
+        for a in ann_list:
+            if a.get("zone_type") != "fillable":
+                continue
+            rules = _parse_annotation_rules(a.get("rules", "{}"))
+            if not rules.get("radio_group"):
+                continue
+            pi = a["paragraph_index"]
+            key = f"{pi}_{a.get('start_char', 0)}"
+            checkbox_checked[pi] = checkbox_checked.get(pi, False) or values.get(key, {}).get("checked", False)
+
+        for r in result["results"]:
+            pi = r["paragraph"]
+            if pi not in checkbox_checked:
+                continue
+            # Find annotation for this result (match by paragraph and annotation pos)
+            matched_ann = None
+            for a in ann_list:
+                if (a.get("zone_type") == "fillable"
+                        and a["paragraph_index"] == pi
+                        and a.get("start_char", 0) == r.get("start_char", 0)):
+                    matched_ann = a
+                    break
+            if not matched_ann:
+                continue
+            rules = _parse_annotation_rules(matched_ann.get("rules", "{}"))
+            if rules.get("radio_group"):
+                continue
+            key = f"{pi}_{matched_ann.get('start_char', 0)}"
+            v = values.get(key, {})
+            actual = v.get("value", "") if isinstance(v, dict) else (v or "")
+            has_content = bool(str(actual).strip("_ "))
+            if checkbox_checked[pi] and not has_content:
+                r["pass"] = False
+                r["reason"] = "该条款已勾选，需填写内容"
+            elif not checkbox_checked[pi]:
+                if has_content:
+                    r["pass"] = False
+                    r["reason"] = "该条款未勾选，不应填写内容"
+                else:
+                    r["pass"] = True
+                    r["reason"] = ""
+
+        result["results"].sort(key=lambda r: r["pass"])
 
         # Include ALL document and template paragraphs for full-text display
         result["document_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in doc_paras_list]

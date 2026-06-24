@@ -23,11 +23,22 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
         "allowed_chars": "any",
         "regex": "",
         "allowed_values": [],
-        "match_field": ""
+        "match_field": "",
+        "radio_group": ""
     }
 
     tb = text_before.strip()
     ta = text_after  # shorthand
+
+    # ---- Checkbox detection: zone starts at char 0 and text begins with □/☑ ----
+    if text_before == "" and full_text and full_text[0] in ('□', '☑', '☒'):
+        label = ta.lstrip(' ').split('：')[0].split(':')[0].strip()
+        if len(label) > 30:
+            label = label[:30]
+        R["field_name"] = label
+        R["required"] = True
+        R["radio_group"] = ""  # filled by caller via _assign_checkbox_groups
+        return R
 
     def set_field(name, **kw):
         R["field_name"] = name
@@ -757,6 +768,60 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
     return R
 
 
+def _assign_checkbox_groups(conn, template_id: int, checkbox_anns: list,
+                            paras: list[dict]) -> None:
+    """Group consecutive checkbox annotations into radio groups.
+
+    Updates the DB rules for each checkbox annotation with a radio_group name
+    derived from the preceding section heading.
+    """
+    if len(checkbox_anns) < 2:
+        return
+
+    # Sort by paragraph_index for consecutiveness check
+    checkbox_anns.sort(key=lambda x: x[0])
+
+    # Group consecutive checkbox paragraphs (gap ≤ 3 paragraphs)
+    groups: list[list[int]] = []
+    current_group = [0]
+    for i in range(1, len(checkbox_anns)):
+        prev_pi = checkbox_anns[current_group[-1]][0]
+        curr_pi = checkbox_anns[i][0]
+        if curr_pi - prev_pi <= 3:
+            current_group.append(i)
+        else:
+            groups.append(current_group)
+            current_group = [i]
+    groups.append(current_group)
+
+    for group_indices in groups:
+        if len(group_indices) < 2:
+            continue
+
+        # Derive radio_group name from the paragraph preceding the first checkbox
+        first_pi = checkbox_anns[group_indices[0]][0]
+        heading_text = ""
+        for offset in range(1, 5):
+            pi = first_pi - offset
+            if pi >= 0 and pi < len(paras):
+                text = paras[pi]['text'].strip()
+                # Match section numbers like "3.1" or Chinese labels ending with ：
+                if re.match(r'[\d.]+(\s|$)', text) or text.endswith('：') or text.endswith(':'):
+                    heading_text = text.split('：')[0].split(':')[0].strip()
+                    break
+
+        if not heading_text:
+            heading_text = f"选项组{first_pi}"
+
+        for idx in group_indices:
+            pi, s, e, R = checkbox_anns[idx]
+            R['radio_group'] = heading_text
+            conn.execute(
+                "UPDATE annotations SET rules = ? WHERE template_id = ? AND paragraph_index = ? AND start_char = ? AND end_char = ?",
+                (json.dumps(R, ensure_ascii=False), template_id, pi, s, e)
+            )
+
+
 def main():
     conn = get_connection()
     templates = conn.execute('SELECT id, name, file_path FROM templates ORDER BY id').fetchall()
@@ -777,6 +842,8 @@ def main():
         print(f"Template ID={tid}: {tpl['name']} ({len(anns)} fillable zones)")
         print(f"{'='*60}")
 
+        checkbox_anns = []  # (pi, s, e, R) for checkbox annotations
+
         for a in anns:
             pi = a['paragraph_index']
             s = a['start_char']
@@ -792,6 +859,9 @@ def main():
 
             R = classify(text_before, text_after, full_text, pi, is_table_cell, is_zero_width)
 
+            if R['field_name'] and full_text[:1] in ('□', '☑', '☒') and text_before == '':
+                checkbox_anns.append((pi, s, e, R))
+
             zone_label = full_text[s:e] if s < e else "(zero-width)"
             print(f"  [{pi}:{s}:{e}] field={R['field_name']} "
                   f"chars={R['allowed_chars']} "
@@ -806,6 +876,10 @@ def main():
                 (json.dumps(R, ensure_ascii=False), tid, pi, s, e)
             )
             total_updated += 1
+
+        # Assign radio_group names for consecutive checkbox paragraphs
+        if checkbox_anns:
+            _assign_checkbox_groups(conn, tid, checkbox_anns, paras)
 
         conn.commit()
         print(f"  -> Updated {len(anns)} annotations")

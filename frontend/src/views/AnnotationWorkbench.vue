@@ -109,7 +109,13 @@ function autoAnnotateUnderscores(paragraphs: ParagraphInfo[]): AnnotationItem[] 
       if (/^_+$/.test(slice)) continue
       fillableRanges.push([s, e])
     }
-    // 3) table cells only: trailing "：" with no fillable → zero-width fillable
+    // 3) checkbox characters □ ☑ ☒ → fillable (single char)
+    const checkboxRegex = /[□☑☒]/g
+    let cb: RegExpExecArray | null
+    while ((cb = checkboxRegex.exec(text)) !== null) {
+      fillableRanges.push([cb.index, cb.index + 1])
+    }
+    // 4) table cells only: trailing "：" with no fillable → zero-width fillable
     if (para.is_table_cell && text.length > 0 && /[：:]\s*$/.test(text)) {
       const lastFillableEnd = fillableRanges.length > 0
         ? Math.max(...fillableRanges.map(r => r[1]))
