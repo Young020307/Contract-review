@@ -823,6 +823,45 @@ def _assign_checkbox_groups(conn, template_id: int, checkbox_anns: list,
             )
 
 
+def _assign_dependent_paras(conn, template_id: int, checkbox_anns: list,
+                            all_fillable_anns: list[dict], paras: list[dict]) -> None:
+    """Auto-detect dependent paragraphs for checkboxes.
+
+    When a checkbox paragraph text contains patterns like '如下：' or '以下：',
+    the subsequent non-checkbox fillable paragraphs are treated as dependent
+    on this checkbox and linked via dependent_paras.
+    """
+    # Build set of paragraph indices that have non-checkbox fillable annotations
+    checkbox_paras = {(pi, s, e) for pi, s, e, _ in checkbox_anns}
+    fillable_para_indices: set[int] = set()
+    for a in all_fillable_anns:
+        key = (a['paragraph_index'], a['start_char'], a['end_char'])
+        if key not in checkbox_paras:
+            fillable_para_indices.add(a['paragraph_index'])
+
+    for pi, s, e, R in checkbox_anns:
+        if pi >= len(paras):
+            continue
+        full_text = paras[pi]['text']
+        # Text after the checkbox character (□/☑/☒)
+        text_after_cb = full_text[1:] if len(full_text) > 1 else ''
+        if not re.search(r'(如下|以下|如下表|明细如下|价格如下|项目如下|标准如下|内容如下)', text_after_cb):
+            continue
+
+        # Find subsequent fillable paragraphs (non-checkbox) within 15 paragraphs
+        deps = []
+        for next_pi in range(pi + 1, min(pi + 16, len(paras))):
+            if next_pi in fillable_para_indices:
+                deps.append(next_pi)
+
+        if deps:
+            R['dependent_paras'] = deps
+            conn.execute(
+                "UPDATE annotations SET rules = ? WHERE template_id = ? AND paragraph_index = ? AND start_char = ? AND end_char = ?",
+                (json.dumps(R, ensure_ascii=False), template_id, pi, s, e)
+            )
+
+
 def main():
     conn = get_connection()
     templates = conn.execute('SELECT id, name, file_path FROM templates ORDER BY id').fetchall()
@@ -881,6 +920,7 @@ def main():
         # Assign radio_group names for consecutive checkbox paragraphs
         if checkbox_anns:
             _assign_checkbox_groups(conn, tid, checkbox_anns, paras)
+            _assign_dependent_paras(conn, tid, checkbox_anns, anns, paras)
 
         conn.commit()
         print(f"  -> Updated {len(anns)} annotations")

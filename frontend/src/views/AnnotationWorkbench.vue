@@ -209,6 +209,12 @@ function handleTextSelect(paraIndex: number, startChar: number, endChar: number,
 }
 
 function handleMarkSelection(item: AnnotationItem) {
+  // Marking the entire paragraph replaces all existing annotations for it
+  if (item.start_char === 0 && item.end_char === paraText.value.length) {
+    annotations.value = annotations.value.filter(
+      a => a.paragraph_index !== item.paragraph_index
+    )
+  }
   const existing = annotations.value.findIndex(
     a => a.paragraph_index === item.paragraph_index && a.start_char === item.start_char
   )
