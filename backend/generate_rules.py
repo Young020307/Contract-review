@@ -23,7 +23,7 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
         "allowed_chars": "any",
         "regex": "",
         "allowed_values": [],
-        "match_field": "",
+        "match_fields": [],
         "radio_group": "",
         "dependent_paras": []
     }
@@ -93,6 +93,11 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
         if "盖章" in prefix:
             set_field("盖章处")
             return R
+        # Inline data-entry labels (e.g. "计费单位：，" → zero-width fillable at gap)
+        for label in ("计费单位", "计价单位", "服务项目", "服务类别", "服务内容说明", "备注"):
+            if re.search(rf'(?:，|,)\s*{label}\s*$', prefix):
+                set_field(label)
+                return R
         set_field("签章处")
         return R
 

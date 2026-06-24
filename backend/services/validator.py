@@ -94,23 +94,29 @@ class RuleValidator:
             rules = json.loads(ann[0]["rules"]) if isinstance(ann[0]["rules"], str) else ann[0]["rules"]
             if not rules:
                 rules = {}
-            match_field = rules.get("match_field", "")
-            if not match_field or not field_result["actual_value"]:
+            match_fields = rules.get("match_fields", [])
+            # Backward compat: also accept old single match_field
+            if not match_fields:
+                old_single = rules.get("match_field", "")
+                if old_single:
+                    match_fields = [old_single]
+            if not match_fields or not field_result["actual_value"]:
                 continue
-            # Find target annotation by field_name
-            target_value = None
-            for a in annotations:
-                if a.get("zone_type") != "fillable":
-                    continue
-                ar = json.loads(a["rules"]) if isinstance(a["rules"], str) else a["rules"]
-                if ar and ar.get("field_name") == match_field:
-                    key = f"{a['paragraph_index']}_{a.get('start_char', 0)}"
-                    target_entry = values.get(key, {})
-                    target_value = target_entry.get("value", "") if isinstance(target_entry, dict) else (target_entry or "")
-                    break
-            if target_value is not None and field_result["actual_value"] != target_value:
-                field_result["pass"] = False
-                field_result["reason"] = f"与「{match_field}」不一致"
+            for match_field in match_fields:
+                # Find target annotation by field_name
+                target_value = None
+                for a in annotations:
+                    if a.get("zone_type") != "fillable":
+                        continue
+                    ar = json.loads(a["rules"]) if isinstance(a["rules"], str) else a["rules"]
+                    if ar and ar.get("field_name") == match_field:
+                        key = f"{a['paragraph_index']}_{a.get('start_char', 0)}"
+                        target_entry = values.get(key, {})
+                        target_value = target_entry.get("value", "") if isinstance(target_entry, dict) else (target_entry or "")
+                        break
+                if target_value is not None and field_result["actual_value"] != target_value:
+                    field_result["pass"] = False
+                    field_result["reason"] = f"与「{match_field}」不一致"
 
         # Radio group mutual-exclusion check
         radio_groups: dict[str, list[dict]] = {}
@@ -167,9 +173,13 @@ class RuleValidator:
         allowed_values = rules.get("allowed_values", [])
         if allowed_values:
             parts.append("可选:" + "/".join(allowed_values))
-        match_field = rules.get("match_field", "")
-        if match_field:
-            parts.append(f"须同「{match_field}」")
+        match_fields = rules.get("match_fields", [])
+        if not match_fields:
+            old_single = rules.get("match_field", "")
+            if old_single:
+                match_fields = [old_single]
+        if match_fields:
+            parts.append("须同「" + "」「".join(match_fields) + "」")
         return "+".join(parts) if parts else "无规则"
 
 

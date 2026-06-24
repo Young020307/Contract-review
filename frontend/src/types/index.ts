@@ -27,7 +27,7 @@ export interface ValidationRule {
   regex: string
   field_name: string
   allowed_values: string[]
-  match_field: string
+  match_fields: string[]
   radio_group: string
   dependent_paras: number[]
 }
@@ -36,7 +36,7 @@ export interface AnnotationItem {
   paragraph_index: number
   start_char: number
   end_char: number
-  zone_type: 'fixed' | 'fillable'
+  zone_type: 'fixed' | 'fillable' | 'variable'
   rules?: ValidationRule
 }
 

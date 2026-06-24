@@ -33,7 +33,7 @@ def init_db():
             paragraph_index INTEGER NOT NULL,
             start_char INTEGER DEFAULT 0,
             end_char INTEGER DEFAULT 0,
-            zone_type TEXT NOT NULL CHECK(zone_type IN ('fixed','fillable')),
+            zone_type TEXT NOT NULL CHECK(zone_type IN ('fixed','fillable','variable')),
             rules TEXT DEFAULT '{}',
             FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
         );
@@ -65,11 +65,34 @@ def init_db():
         conn.execute("ALTER TABLE annotations ADD COLUMN end_char INTEGER DEFAULT 0")
     except Exception:
         pass
-    # Replace old unique index with char-range aware one
+    # Replace old unique index with char-range aware one (zone_type included for zero-width fillable adjacency)
     conn.execute("DROP INDEX IF EXISTS idx_annotations_template_para")
     conn.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_annotations_template_para_range
-        ON annotations(template_id, paragraph_index, start_char)
+        ON annotations(template_id, paragraph_index, start_char, zone_type)
     """)
+    # Migration: expand zone_type to include 'variable'
+    cur = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='annotations'")
+    row = cur.fetchone()
+    if row and "'variable'" not in row[0]:
+        conn.execute("""
+            CREATE TABLE annotations_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_id INTEGER NOT NULL,
+                paragraph_index INTEGER NOT NULL,
+                start_char INTEGER DEFAULT 0,
+                end_char INTEGER DEFAULT 0,
+                zone_type TEXT NOT NULL CHECK(zone_type IN ('fixed','fillable','variable')),
+                rules TEXT DEFAULT '{}',
+                FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("INSERT INTO annotations_new SELECT * FROM annotations")
+        conn.execute("DROP TABLE annotations")
+        conn.execute("ALTER TABLE annotations_new RENAME TO annotations")
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_annotations_template_para_range
+            ON annotations(template_id, paragraph_index, start_char)
+        """)
     conn.commit()
     conn.close()

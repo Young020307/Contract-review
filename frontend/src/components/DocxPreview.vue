@@ -107,7 +107,7 @@ function buildAnnotatedHTML(mammothHTML: string): string {
           body.appendChild(dom.createTextNode(fullText.slice(pos, a.start_char)))
         }
         const span = dom.createElement('span')
-        span.className = a.zone_type === 'fillable' ? 'fillable-zone' : 'fixed-zone'
+        span.className = a.zone_type + '-zone'
         span.setAttribute('data-annotation', `${a.start_char},${a.end_char},${a.zone_type}`)
         if (a.start_char === a.end_char) {
           span.classList.add('fillable-insert')
@@ -312,6 +312,13 @@ function updateZoneFocus() {
   padding: 2px 4px;
   border-radius: var(--radius-sm);
   border-bottom: 2px solid var(--vermilion);
+  cursor: pointer;
+}
+.preview-body :deep(.variable-zone) {
+  background: #fef3c7;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  border-bottom: 2px solid #d97706;
   cursor: pointer;
 }
 .preview-body :deep(.zone-focused) {

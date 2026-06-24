@@ -20,6 +20,7 @@
         <div class="btn-row">
           <button class="mark-btn fixed" @click="mark('fixed')">标记为固定区</button>
           <button class="mark-btn fillable" @click="mark('fillable')">标记为填充区</button>
+          <button class="mark-btn variable" @click="mark('variable')">标记为可变条款</button>
         </div>
       </div>
       <p v-else class="tb-hint">拖选文字标记范围</p>
@@ -77,9 +78,9 @@
             </div>
           </el-form-item>
           <el-form-item label="匹配字段">
-            <el-select v-model="rules.match_field" clearable placeholder="选择需一致的字段"
+            <el-select v-model="rules.match_fields" multiple clearable placeholder="选择需一致的字段"
               size="small" style="width:100%">
-              <el-option v-for="name in fillableFieldNames" :key="name" :label="name" :value="name" />
+              <el-option v-for="name in availableMatchFields" :key="name" :label="name" :value="name" />
             </el-select>
           </el-form-item>
           <el-divider style="margin:8px 0">勾选类规则</el-divider>
@@ -116,6 +117,9 @@
         <button :class="['ann-fbtn', 'fbtn-fixed', { active: annFilter === 'fixed' }]" @click="annFilter = 'fixed'">
           固定 <span class="fbtn-num">{{ fixedCount }}</span>
         </button>
+        <button :class="['ann-fbtn', 'fbtn-variable', { active: annFilter === 'variable' }]" @click="annFilter = 'variable'">
+          可变 <span class="fbtn-num">{{ variableCount }}</span>
+        </button>
       </div>
       <div class="ann-list">
         <div v-if="filteredAnnotations.length === 0" class="ann-empty">暂无标注</div>
@@ -123,7 +127,7 @@
           class="ann-item" :ref="(el: any) => setAnnRef(a.paragraph_index, a.start_char, el)"
           @click="handleAnnItemClick(a)">
           <span class="ann-tag" :class="a.zone_type">
-            {{ a.zone_type === 'fixed' ? '固定' : '填充' }}
+            {{ a.zone_type === 'fixed' ? '固定' : a.zone_type === 'variable' ? '可变' : '填充' }}
           </span>
           <span class="ann-loc">段{{ a.paragraph_index }} [{{ a.start_char }},{{ a.end_char }}]</span>
           <span v-if="a.rules?.field_name" class="ann-field">{{ a.rules.field_name }}</span>
@@ -169,20 +173,24 @@ const emit = defineEmits<{
 
 const showFillableRules = ref(false)
 const editingAnnotation = ref<{ paraIndex: number; startChar: number } | null>(null)
-const annFilter = ref<'all' | 'fillable' | 'fixed'>('all')
+const annFilter = ref<'all' | 'fillable' | 'fixed' | 'variable'>('all')
 const allowedValueInput = ref('')
 
 const fillableCount = computed(() => props.annotations.filter(a => a.zone_type === 'fillable').length)
 const fixedCount = computed(() => props.annotations.filter(a => a.zone_type === 'fixed').length)
+const variableCount = computed(() => props.annotations.filter(a => a.zone_type === 'variable').length)
 const filteredAnnotations = computed(() => {
   if (annFilter.value === 'all') return props.annotations
   return props.annotations.filter(a => a.zone_type === annFilter.value)
 })
 
-const fillableFieldNames = computed(() => {
+const availableMatchFields = computed(() => {
+  const ownName = editingAnnotation.value
+    ? props.annotations.find(a => a.paragraph_index === editingAnnotation.value!.paraIndex && a.start_char === editingAnnotation.value!.startChar)?.rules?.field_name
+    : rules.value.field_name
   const names: string[] = []
   for (const a of props.annotations) {
-    if (a.zone_type === 'fillable' && a.rules?.field_name) {
+    if (a.zone_type === 'fillable' && a.rules?.field_name && a.rules.field_name !== ownName) {
       names.push(a.rules.field_name)
     }
   }
@@ -192,7 +200,7 @@ const fillableFieldNames = computed(() => {
 const rules = ref<ValidationRule>({
   required: true, min_chars: 1, max_chars: 200,
   allowed_chars: 'any', regex: '', field_name: '',
-  allowed_values: [], match_field: '',
+  allowed_values: [], match_fields: [],
   radio_group: '',
   dependent_paras: []
 })
@@ -219,11 +227,11 @@ watch(() => props.clickedAnnotation, (val) => {
     )
     if (ann?.rules) {
       rules.value = Object.assign(
-        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] },
+        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [] },
         ann.rules
       )
     } else {
-      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] }
+      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [] }
     }
     editingAnnotation.value = { paraIndex: val.paraIndex, startChar: val.startChar }
     showFillableRules.value = true
@@ -232,7 +240,7 @@ watch(() => props.clickedAnnotation, (val) => {
 
 watch(() => props.selectedText, () => { showFillableRules.value = false })
 
-function mark(zone: 'fixed' | 'fillable') {
+function mark(zone: 'fixed' | 'fillable' | 'variable') {
   if (props.currentParagraph === null) return
   if (props.selectedStart === null || props.selectedEnd === null) return
   editingAnnotation.value = null
@@ -244,11 +252,11 @@ function mark(zone: 'fixed' | 'fillable') {
     paragraph_index: props.currentParagraph,
     start_char: props.selectedStart,
     end_char: props.selectedEnd,
-    zone_type: 'fixed'
+    zone_type: zone
   })
 }
 
-function markWholePara(zone: 'fixed' | 'fillable') {
+function markWholePara(zone: 'fixed' | 'fillable' | 'variable') {
   if (props.currentParagraph === null) return
   if (zone === 'fillable') {
     showFillableRules.value = true
@@ -258,7 +266,7 @@ function markWholePara(zone: 'fixed' | 'fillable') {
     paragraph_index: props.currentParagraph,
     start_char: 0,
     end_char: props.paraText.length,
-    zone_type: 'fixed'
+    zone_type: zone
   })
 }
 
@@ -269,11 +277,11 @@ function editClickedAnnotation() {
   )
   if (ann?.rules) {
     rules.value = Object.assign(
-      { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] },
+      { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [] },
       ann.rules
     )
   } else {
-    rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] }
+    rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [] }
   }
   editingAnnotation.value = { paraIndex: props.clickedAnnotation.paraIndex, startChar: props.clickedAnnotation.startChar }
   showFillableRules.value = true
@@ -313,11 +321,11 @@ function handleAnnItemClick(a: AnnotationItem) {
   if (a.zone_type === 'fillable') {
     if (a.rules) {
       rules.value = Object.assign(
-        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] },
+        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [] },
         a.rules
       )
     } else {
-      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] }
+      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [] }
     }
     editingAnnotation.value = { paraIndex: a.paragraph_index, startChar: a.start_char }
     showFillableRules.value = true
@@ -447,6 +455,8 @@ function save() { emit('save') }
 .mark-btn.fixed:hover { background: var(--vermilion-soft); }
 .mark-btn.fillable { border-color: var(--ink-green); color: var(--ink-green); }
 .mark-btn.fillable:hover { background: var(--ink-green-soft); }
+.mark-btn.variable { border-color: #d97706; color: #d97706; }
+.mark-btn.variable:hover { background: #fef3c7; }
 .mark-btn.edit { border-color: var(--ink-blue); color: var(--ink-blue); }
 .mark-btn.edit:hover { background: var(--ink-blue-soft); }
 .mark-btn.cancel { border-color: var(--ink-muted); color: var(--ink-muted); }
@@ -543,6 +553,7 @@ function save() { emit('save') }
 .ann-fbtn.active { color: var(--paper-white); border-color: var(--ink); background: var(--ink); }
 .fbtn-fillable.active { border-color: var(--ink-green); background: var(--ink-green); }
 .fbtn-fixed.active { border-color: var(--vermilion); background: var(--vermilion); }
+.fbtn-variable.active { border-color: #d97706; background: #d97706; }
 .fbtn-num { font-size: 10px; font-weight: 500; opacity: .75; }
 
 .ann-count {
@@ -587,6 +598,7 @@ function save() { emit('save') }
 }
 .ann-tag.fixed { background: var(--vermilion-soft); color: var(--vermilion); }
 .ann-tag.fillable { background: var(--ink-green-soft); color: var(--ink-green); }
+.ann-tag.variable { background: #fef3c7; color: #d97706; }
 
 .ann-loc {
   font-size: var(--text-xs);

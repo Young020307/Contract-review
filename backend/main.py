@@ -146,7 +146,7 @@ def save_annotations(template_id: int, body: AnnotationBatch):
             if ann.zone_type == "fillable" and ann.rules:
                 rules_json = ann.rules.model_dump_json()
             conn.execute(
-                "INSERT INTO annotations (template_id, paragraph_index, start_char, end_char, zone_type, rules) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO annotations (template_id, paragraph_index, start_char, end_char, zone_type, rules) VALUES (?, ?, ?, ?, ?, ?)",
                 (template_id, ann.paragraph_index, ann.start_char, ann.end_char, ann.zone_type, rules_json)
             )
         conn.commit()

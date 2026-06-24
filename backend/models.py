@@ -10,7 +10,7 @@ class ValidationRule(BaseModel):
     regex: str = ""
     field_name: str = ""
     allowed_values: list[str] = []
-    match_field: str = ""
+    match_fields: list[str] = []
     radio_group: str = ""
     dependent_paras: list[int] = []
 
@@ -19,7 +19,7 @@ class AnnotationItem(BaseModel):
     paragraph_index: int
     start_char: int = 0
     end_char: int = 0
-    zone_type: Literal["fixed", "fillable"]
+    zone_type: Literal["fixed", "fillable", "variable"]
     rules: Optional[ValidationRule] = None
 
 class AnnotationBatch(BaseModel):
