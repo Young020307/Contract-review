@@ -12,6 +12,7 @@ class ValidationRule(BaseModel):
     allowed_values: list[str] = []
     match_field: str = ""
     radio_group: str = ""
+    dependent_paras: list[int] = []
 
 # --- Request Models ---
 class AnnotationItem(BaseModel):

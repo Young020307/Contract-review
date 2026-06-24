@@ -29,6 +29,7 @@ export interface ValidationRule {
   allowed_values: string[]
   match_field: string
   radio_group: string
+  dependent_paras: number[]
 }
 
 export interface AnnotationItem {

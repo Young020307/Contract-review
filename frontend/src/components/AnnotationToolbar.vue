@@ -185,7 +185,8 @@ const rules = ref<ValidationRule>({
   required: true, min_chars: 1, max_chars: 200,
   allowed_chars: 'any', regex: '', field_name: '',
   allowed_values: [], match_field: '',
-  radio_group: ''
+  radio_group: '',
+  dependent_paras: []
 })
 
 const annRefs = ref<Record<string, HTMLElement>>({})
@@ -210,11 +211,11 @@ watch(() => props.clickedAnnotation, (val) => {
     )
     if (ann?.rules) {
       rules.value = Object.assign(
-        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '' },
+        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] },
         ann.rules
       )
     } else {
-      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '' }
+      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] }
     }
     editingAnnotation.value = { paraIndex: val.paraIndex, startChar: val.startChar }
     showFillableRules.value = true
@@ -260,11 +261,11 @@ function editClickedAnnotation() {
   )
   if (ann?.rules) {
     rules.value = Object.assign(
-      { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '' },
+      { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] },
       ann.rules
     )
   } else {
-    rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '' }
+    rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] }
   }
   editingAnnotation.value = { paraIndex: props.clickedAnnotation.paraIndex, startChar: props.clickedAnnotation.startChar }
   showFillableRules.value = true
@@ -304,11 +305,11 @@ function handleAnnItemClick(a: AnnotationItem) {
   if (a.zone_type === 'fillable') {
     if (a.rules) {
       rules.value = Object.assign(
-        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '' },
+        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] },
         a.rules
       )
     } else {
-      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '' }
+      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '', radio_group: '', dependent_paras: [] }
     }
     editingAnnotation.value = { paraIndex: a.paragraph_index, startChar: a.start_char }
     showFillableRules.value = true
