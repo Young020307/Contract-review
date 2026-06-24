@@ -17,7 +17,6 @@ build/
 Thumbs.db
 
 # Database
-*.db
 
 # Node
 node_modules/
