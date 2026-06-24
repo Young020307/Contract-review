@@ -34,5 +34,8 @@ docs/superpowers/
 # Uploads
 backend/uploads/
 
+# Superpowers
+.superpowers/
+
 # Claude
 .claude/
