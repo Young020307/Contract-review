@@ -7,17 +7,18 @@ Validates that:
 """
 import sys, os, re
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from services.parser import DocxParser
 from services.diff_engine import DiffEngine
 from difflib import SequenceMatcher
 import sqlite3
 
-db = sqlite3.connect(os.path.join(os.path.dirname(__file__), "data.db"))
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+db = sqlite3.connect(os.path.join(BACKEND_DIR, "data.db"))
 db.row_factory = sqlite3.Row
 
-DOCS_DIR = os.path.join(os.path.dirname(__file__), "..", "docs")
+DOCS_DIR = os.path.join(BACKEND_DIR, "..", "docs")
 
 test_pairs = [
     (33, "技术服务标准合同-调整版V4.docx", "技术服务标准合同-测试.docx"),

@@ -5,13 +5,13 @@
 3. 可填充区高亮是否正确（是否高亮了固定区域）
 """
 import sys, os, json
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from services.parser import DocxParser
 from services.diff_engine import DiffEngine
 from services.validator import RuleValidator
 
-BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ── 配置 ──
 TPL_NAME = "5b03a5999bc2404ba1df910034a4f29d_咨询服务标准合同-调整板V4.docx"
