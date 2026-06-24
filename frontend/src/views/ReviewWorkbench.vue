@@ -59,6 +59,10 @@
     <div v-if="showResult" class="unified-review">
       <!-- Document tabs -->
       <div class="doc-tabs-bar">
+        <el-button text @click="showResult = false" class="back-to-setup">
+          <el-icon><ArrowLeft /></el-icon>
+          返回工作台
+        </el-button>
         <button
           v-for="(doc, idx) in uploadedDocs"
           :key="doc.id"
@@ -104,7 +108,7 @@
         <div class="panel-body doc-body" ref="docBody">
           <template v-for="item in displayItems" :key="item.key">
             <div v-if="item.type === 'placeholder'" class="deleted-placeholder">
-              <span class="placeholder-text">该条款已删除</span>
+              <span class="placeholder-text">该段内容被删除</span>
             </div>
             <div v-else class="para-block"
               :ref="(el: any) => setParaRef(item.para.index, el)">
@@ -534,7 +538,11 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   background: var(--paper-white);
   border: 1px solid var(--rule);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--transition-base);
+}
+.setup-card:hover {
+  box-shadow: var(--shadow-lg);
 }
 
 /* Drag-and-drop upload */
@@ -568,6 +576,17 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   color: var(--ink);
   margin: 0 0 var(--space-5);
   text-align: center;
+  letter-spacing: .03em;
+}
+
+.setup-card :deep(.el-upload-dragger) {
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--rule);
+  transition: all var(--transition-fast);
+}
+.setup-card :deep(.el-upload-dragger:hover) {
+  border-color: var(--ink-muted);
+  background: var(--paper-warm);
 }
 
 .setup-card :deep(.el-form-item:last-child) {
@@ -581,12 +600,23 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 /* ---- Document tabs ---- */
 .doc-tabs-bar {
   display: flex;
+  align-items: center;
   flex-shrink: 0;
   gap: 0;
   background: var(--paper-white);
   border-bottom: 1px solid var(--rule);
   overflow-x: auto;
 }
+.back-to-setup {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  font-weight: 500;
+  padding: var(--space-2) var(--space-4);
+  margin-right: var(--space-2);
+  transition: color var(--transition-fast);
+}
+.back-to-setup:hover { color: var(--ink); }
 .doc-tab {
   padding: var(--space-2) var(--space-4);
   border: none;
@@ -690,9 +720,19 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   font-weight: 600;
   color: var(--ink);
   flex-shrink: 0;
+  letter-spacing: .03em;
 }
 .center-panel .panel-head { background: var(--paper-white); }
-.doc-meta { font-family: var(--font-body); font-weight: 400; font-size: var(--text-xs); color: var(--ink-muted); }
+.doc-meta {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Panel bodies */
 .panel-body {
@@ -719,8 +759,13 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   padding: var(--space-5) var(--space-6);
   line-height: 1.9;
 }
+.doc-body .para-block {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
 .doc-body .para-block + .para-block {
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px dashed var(--rule-light);
 }
@@ -728,15 +773,15 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 .deleted-placeholder {
   padding: var(--space-3) var(--space-2);
   margin: var(--space-3) 0;
-  border: 1px dashed var(--vermilion);
-  border-left: 3px solid var(--vermilion);
-  background: var(--vermilion-soft);
+  border: 1px dashed var(--danger);
+  border-left: 3px solid var(--danger);
+  background: var(--danger-soft);
   border-radius: var(--radius-sm);
   text-align: center;
 }
 .placeholder-text {
   font-size: var(--text-sm);
-  color: var(--vermilion);
+  color: var(--danger);
   font-weight: 500;
 }
 .deleted-placeholder + .para-block {
@@ -755,15 +800,15 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 
 /* ---- Diff segments ---- */
 .seg-insert {
-  background: var(--vermilion-soft);
-  border-bottom: 2px solid var(--vermilion);
+  background: var(--primary-soft);
+  border-bottom: 2px solid var(--primary);
   padding: 1px 2px;
   border-radius: 2px;
 }
 .seg-delete {
   display: inline-block;
   color: var(--paper-white);
-  background: var(--vermilion);
+  background: var(--danger);
   font-size: 10px;
   font-weight: 700;
   padding: 0 3px;
@@ -771,8 +816,8 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   margin: 0 1px;
 }
 .seg-replace {
-  background: var(--vermilion-soft);
-  border-bottom: 2px solid var(--vermilion);
+  background: var(--primary-soft);
+  border-bottom: 2px solid var(--primary);
   padding: 1px 2px;
   border-radius: 2px;
 }
@@ -793,7 +838,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 
 /* Flash animations */
 .flash-red { animation: flashRed 0.4s ease 3; }
-@keyframes flashRed { 50% { background: var(--vermilion-soft); } }
+@keyframes flashRed { 50% { background: var(--danger-soft); } }
 .flash-amber { animation: flashAmber 0.4s ease 3; }
 @keyframes flashAmber { 50% { background: var(--amber-soft); } }
 
@@ -825,7 +870,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 .stamp-btn:disabled { opacity: .3; cursor: not-allowed; }
 .stamp-btn.active { color: var(--paper-white); }
 
-.stamp-tamper.active { background: var(--vermilion); border-color: var(--vermilion); }
+.stamp-tamper.active { background: var(--danger); border-color: var(--danger); }
 .stamp-validate.active { background: var(--amber); border-color: var(--amber); }
 .stamp-all.active { background: var(--ink); border-color: var(--ink); }
 
@@ -856,7 +901,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   color: var(--ink);
   flex-shrink: 0;
 }
-.compare-block .block-head { background: var(--vermilion-soft); border-bottom: 1px solid var(--vermilion-border); }
+.compare-block .block-head { background: var(--danger-soft); border-bottom: 1px solid var(--danger-border); }
 .validate-block .block-head { background: var(--amber-soft); border-bottom: 1px solid var(--amber-border); }
 .vali-summary { font-weight: 400; font-size: var(--text-xs); color: var(--amber); }
 
@@ -877,7 +922,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 /* Violation items */
 .vio-item {
   padding: var(--space-3);
-  border: 1px solid var(--vermilion-border);
+  border: 1px solid var(--danger-border);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-2);
   cursor: pointer;
@@ -887,7 +932,7 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   background: var(--paper-white);
   transition: all .15s;
 }
-.vio-item:hover { background: var(--vermilion-soft); }
+.vio-item:hover { background: var(--danger-soft); }
 .vio-stamp {
   flex-shrink: 0;
   display: inline-flex;
@@ -903,12 +948,12 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   transform: rotate(-3deg);
 }
 .vio-stamp.stamp-insert { color: var(--ink-blue); border-color: var(--ink-blue); }
-.vio-stamp.stamp-delete { color: var(--vermilion); border-color: var(--vermilion); }
+.vio-stamp.stamp-delete { color: var(--danger); border-color: var(--danger); }
 .vio-stamp.stamp-replace { color: var(--amber); border-color: var(--amber); }
 .vio-body { min-width: 0; }
 .vio-row { font-size: var(--text-xs); line-height: 1.8; word-break: break-all; }
 .vio-row.tpl { color: var(--ink-muted); }
-.vio-row.act { color: var(--vermilion); }
+.vio-row.act { color: var(--danger); }
 
 /* Field items */
 .field-item {
@@ -937,5 +982,5 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
 
 .field-rule { font-size: var(--text-xs); color: var(--ink-muted); }
 .field-value { font-size: var(--text-sm); color: var(--ink); margin-top: var(--space-1); word-break: break-all; }
-.field-reason { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--vermilion); }
+.field-reason { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--danger); }
 </style>

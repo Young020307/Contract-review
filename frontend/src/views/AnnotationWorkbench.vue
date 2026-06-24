@@ -1,38 +1,54 @@
 <template>
   <div class="workbench">
-    <div class="wb-left">
-      <DocxPreview
-        :file-url="docxUrl"
-        :selected-paragraph="currentParagraph"
-        :selected-start="selectedStart"
-        :selected-end="selectedEnd"
-        :annotations="annotations"
-        :docx-indices="docxIndices"
-        :focused-zone="focusedZone"
-        @paragraph-click="handleParagraphClick"
-        @text-select="handleTextSelect"
-        @annotation-click="handleAnnotationClick"
-      />
+    <div class="wb-topbar">
+      <div class="topbar-left">
+        <el-button text @click="$router.push('/')" class="back-btn">
+          <el-icon><ArrowLeft /></el-icon>
+          返回模板列表
+        </el-button>
+        <span class="topbar-divider">|</span>
+        <span class="topbar-title">正在标注：{{ templateName }}</span>
+      </div>
+      <el-button type="primary" @click="handleSave" :loading="saving">
+        <el-icon><Check /></el-icon>
+        保存标注
+      </el-button>
     </div>
-    <div class="wb-right">
-      <AnnotationToolbar
-        :current-paragraph="currentParagraph"
-        :para-text="paraText"
-        :annotations="annotations"
-        :saving="saving"
-        :selected-text="selectedText"
-        :selected-start="selectedStart"
-        :selected-end="selectedEnd"
-        :clicked-annotation="clickedAnnotation"
-        :para-indices="docxIndices"
-        @mark-selection="handleMarkSelection"
-        @save="handleSave"
-        @select-para="handleParagraphClick"
-        @remove-annotation="handleRemoveAnnotation"
-        @cancel-annotation="handleCancelAnnotation"
-        @update-annotation="handleUpdateAnnotation"
-        @focus-annotation="handleFocusAnnotation"
-      />
+    <div class="wb-main">
+      <div class="wb-left">
+        <DocxPreview
+          :file-url="docxUrl"
+          :selected-paragraph="currentParagraph"
+          :selected-start="selectedStart"
+          :selected-end="selectedEnd"
+          :annotations="annotations"
+          :docx-indices="docxIndices"
+          :focused-zone="focusedZone"
+          @paragraph-click="handleParagraphClick"
+          @text-select="handleTextSelect"
+          @annotation-click="handleAnnotationClick"
+        />
+      </div>
+      <div class="wb-right">
+        <AnnotationToolbar
+          :current-paragraph="currentParagraph"
+          :para-text="paraText"
+          :annotations="annotations"
+          :saving="saving"
+          :selected-text="selectedText"
+          :selected-start="selectedStart"
+          :selected-end="selectedEnd"
+          :clicked-annotation="clickedAnnotation"
+          :para-indices="docxIndices"
+          @mark-selection="handleMarkSelection"
+          @save="handleSave"
+          @select-para="handleParagraphClick"
+          @remove-annotation="handleRemoveAnnotation"
+          @cancel-annotation="handleCancelAnnotation"
+          @update-annotation="handleUpdateAnnotation"
+          @focus-annotation="handleFocusAnnotation"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -41,6 +57,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { ArrowLeft, Check } from '@element-plus/icons-vue'
 import { getTemplate, saveAnnotations, getAnnotations } from '../api'
 import type { AnnotationItem, ParagraphInfo } from '../types'
 import DocxPreview from '../components/DocxPreview.vue'
@@ -57,6 +74,7 @@ const selectedStart = ref<number | null>(null)
 const selectedEnd = ref<number | null>(null)
 const annotations = ref<AnnotationItem[]>([])
 const docxIndices = ref<number[]>([])
+const templateName = ref('')
 const clickedAnnotation = ref<{ paraIndex: number; startChar: number; zoneType: string } | null>(null)
 const focusedZone = ref<{ paraIndex: number; startChar: number } | null>(null)
 const saving = ref(false)
@@ -64,6 +82,7 @@ const saving = ref(false)
 onMounted(async () => {
   try {
     const template = await getTemplate(templateId)
+    templateName.value = template.name
     docxUrl.value = `/api/documents/proxy-template/${templateId}`
     docxIndices.value = template.paragraphs.map(p => p.index)
     const detected = autoAnnotateUnderscores(template.paragraphs)
@@ -326,19 +345,60 @@ async function handleSave() {
 <style scoped>
 .workbench {
   display: flex;
-  gap: 0;
+  flex-direction: column;
   height: 100%;
+}
+
+.wb-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 var(--space-4);
+  background: var(--paper-white);
+  border-bottom: 1px solid var(--rule);
+  flex-shrink: 0;
+}
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.back-btn {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  font-weight: 500;
+  transition: color var(--transition-fast);
+}
+.back-btn:hover { color: var(--ink); }
+.topbar-divider {
+  color: var(--rule);
+  font-size: var(--text-base);
+}
+.topbar-title {
+  font-size: var(--text-sm);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.wb-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .wb-left {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  background: var(--paper);
 }
 
 .wb-right {
   width: 380px;
   flex-shrink: 0;
   border-left: 1px solid var(--rule);
+  background: var(--paper-white);
 }
 </style>

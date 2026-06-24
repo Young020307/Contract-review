@@ -199,16 +199,7 @@ class DocxParser:
                 if pos < len(text):
                     fixed_segments.append(text[pos:])
 
-                if not fixed_segments:
-                    # Entirely fillable — try text inclusion first
-                    for j, dt in enumerate(doc_texts):
-                        if j in used_docs:
-                            continue
-                        if text in dt or dt in text:
-                            found = j
-                            break
-                    # If no text match, defer to pass 2
-                else:
+                if fixed_segments:
                     fixed_len = sum(len(s) for s in fixed_segments)
                     if fixed_len >= 2:
                         pattern = ".*?".join(re.escape(s) for s in fixed_segments)
@@ -219,12 +210,21 @@ class DocxParser:
                                 found = j
                                 break
                     # If fixed text too short, defer to pass 2
+                # Entirely fillable (no fixed segments) — defer to pass 2 positional
+                # matching. Substring inclusion is too aggressive: pure-placeholder
+                # text (e.g. "____") is a substring of any shorter placeholder,
+                # producing false matches that cascade downstream.
 
             if found is not None:
                 mapping[pi] = found
                 used_docs.add(found)
-            else:
+            elif anns:
+                # Only defer paragraphs with fillable zones — their content
+                # legitimately differs between template and document
                 deferred.append(pi)
+            else:
+                # Non-fillable paragraph with no match = genuinely deleted/modified
+                mapping[pi] = None
 
         # ── Pass 2: positional fallback for deferred paragraphs ──
         remaining_docs = [j for j in range(len(doc_texts)) if j not in used_docs]

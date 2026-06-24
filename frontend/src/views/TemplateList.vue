@@ -1,18 +1,24 @@
 <template>
   <div class="tpl-page">
     <div class="page-head">
-      <h2 class="page-title">模板管理</h2>
+      <div class="head-left">
+        <h2 class="page-title">模板管理</h2>
+        <span class="page-subtitle">上传并标注合同模板，用于后续智能审查</span>
+      </div>
       <el-upload :show-file-list="false" :before-upload="handleUpload" accept=".docx">
-        <el-button type="primary" size="large">上传模板</el-button>
+        <el-button type="primary" size="large">
+          <el-icon><UploadFilled /></el-icon>
+          上传模板
+        </el-button>
       </el-upload>
     </div>
 
     <div class="table-card">
       <el-table :data="templates" stripe highlight-current-row>
         <el-table-column type="index" label="序号" width="64" />
-        <el-table-column prop="name" label="模板名称" />
+        <el-table-column prop="name" label="模板名称" align="center" />
         <el-table-column prop="paragraph_count" label="段落数" width="88" align="center" />
-        <el-table-column prop="created_at" label="上传时间" width="176" />
+        <el-table-column prop="created_at" label="上传时间" width="176" align="center" />
         <el-table-column label="状态" width="96" align="center">
           <template #default="{ row }">
             <el-tag :type="row.annotated ? 'success' : 'warning'" size="small">
@@ -20,9 +26,10 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="196" align="center">
           <template #default="{ row }">
             <el-button size="small" @click="$router.push(`/annotate/${row.id}`)">
+              <el-icon><Edit /></el-icon>
               标注
             </el-button>
             <el-popconfirm
@@ -32,7 +39,9 @@
               @confirm="handleDelete(row.id)"
             >
               <template #reference>
-                <el-button type="danger" size="small" plain>删除</el-button>
+                <el-button type="danger" size="small" plain>
+                  <el-icon><Delete /></el-icon>
+                </el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -45,6 +54,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { UploadFilled, Edit, Delete } from '@element-plus/icons-vue'
 import { listTemplates, uploadTemplate, getAnnotations, deleteTemplate } from '../api'
 import type { TemplateInfo } from '../types'
 
@@ -93,11 +103,15 @@ async function handleUpload(file: File) {
 
 .page-head {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   margin-bottom: var(--space-5);
 }
-
+.head-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
 .page-title {
   font-family: var(--font-display);
   font-size: var(--text-xl);
@@ -105,16 +119,25 @@ async function handleUpload(file: File) {
   color: var(--ink);
   letter-spacing: .02em;
 }
+.page-subtitle {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
 
 .table-card {
   background: var(--paper-white);
   border: 1px solid var(--rule);
   border-radius: var(--radius-md);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--transition-base);
+}
+.table-card:hover {
+  box-shadow: var(--shadow-lg);
 }
 
 .table-card :deep(.el-table) { border: none; }
 .table-card :deep(.el-table::before) { display: none; }
 .table-card :deep(.el-table__inner-wrapper::before) { display: none; }
+.table-card :deep(.el-button--small) { border-radius: var(--radius-sm); }
 </style>

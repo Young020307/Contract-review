@@ -409,8 +409,8 @@ function save() { emit('save') }
   margin-bottom: var(--space-2);
 }
 .sel-block.clicked {
-  background: var(--vermilion-soft);
-  border-color: var(--vermilion-border);
+  background: var(--primary-soft);
+  border-color: var(--primary-border);
 }
 .sel-label {
   font-size: var(--text-xs);
@@ -418,7 +418,7 @@ function save() { emit('save') }
   color: var(--ink-blue);
   margin: 0 0 var(--space-1);
 }
-.clicked .sel-label { color: var(--vermilion); }
+.clicked .sel-label { color: var(--primary); }
 .sel-text {
   font-size: var(--text-sm);
   font-weight: 600;
@@ -451,8 +451,8 @@ function save() { emit('save') }
   color: var(--ink-soft);
 }
 .mark-btn:hover { background: var(--paper-hover); }
-.mark-btn.fixed { border-color: var(--vermilion); color: var(--vermilion); }
-.mark-btn.fixed:hover { background: var(--vermilion-soft); }
+.mark-btn.fixed { border-color: var(--primary); color: var(--primary); }
+.mark-btn.fixed:hover { background: var(--primary-soft); }
 .mark-btn.fillable { border-color: var(--ink-green); color: var(--ink-green); }
 .mark-btn.fillable:hover { background: var(--ink-green-soft); }
 .mark-btn.variable { border-color: #d97706; color: #d97706; }
@@ -552,7 +552,7 @@ function save() { emit('save') }
 .ann-fbtn:hover { border-color: var(--ink-muted); color: var(--ink); }
 .ann-fbtn.active { color: var(--paper-white); border-color: var(--ink); background: var(--ink); }
 .fbtn-fillable.active { border-color: var(--ink-green); background: var(--ink-green); }
-.fbtn-fixed.active { border-color: var(--vermilion); background: var(--vermilion); }
+.fbtn-fixed.active { border-color: var(--primary); background: var(--primary); }
 .fbtn-variable.active { border-color: #d97706; background: #d97706; }
 .fbtn-num { font-size: 10px; font-weight: 500; opacity: .75; }
 
@@ -596,7 +596,7 @@ function save() { emit('save') }
   padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
-.ann-tag.fixed { background: var(--vermilion-soft); color: var(--vermilion); }
+.ann-tag.fixed { background: var(--primary-soft); color: var(--primary); }
 .ann-tag.fillable { background: var(--ink-green-soft); color: var(--ink-green); }
 .ann-tag.variable { background: #fef3c7; color: #d97706; }
 
@@ -625,13 +625,13 @@ function save() { emit('save') }
   border-radius: var(--radius-sm);
   transition: all .15s;
 }
-.ann-del:hover { color: var(--vermilion); background: var(--vermilion-soft); }
+.ann-del:hover { color: var(--primary); background: var(--primary-soft); }
 
 .ann-flash {
   animation: annFlash .4s ease 3;
 }
 @keyframes annFlash {
-  50% { background: var(--vermilion-soft); }
+  50% { background: var(--primary-soft); }
 }
 
 /* Save button area */

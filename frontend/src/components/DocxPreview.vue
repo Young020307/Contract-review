@@ -305,13 +305,13 @@ function updateZoneFocus() {
 }
 @keyframes insertPulse {
   0%, 100% { border-bottom-color: var(--ink-green); }
-  50% { border-bottom-color: var(--vermilion); }
+  50% { border-bottom-color: var(--primary); }
 }
 .preview-body :deep(.fixed-zone) {
-  background: var(--vermilion-soft);
+  background: var(--primary-soft);
   padding: 2px 4px;
   border-radius: var(--radius-sm);
-  border-bottom: 2px solid var(--vermilion);
+  border-bottom: 2px solid var(--primary);
   cursor: pointer;
 }
 .preview-body :deep(.variable-zone) {
@@ -328,6 +328,6 @@ function updateZoneFocus() {
   animation: zonePulse .6s ease 2;
 }
 @keyframes zonePulse {
-  50% { outline-color: var(--vermilion); outline-width: 3px; }
+  50% { outline-color: var(--primary); outline-width: 3px; }
 }
 </style>

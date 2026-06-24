@@ -79,8 +79,6 @@ export interface CompareResult {
   violations: CompareViolation[]
   paragraph_mapping?: Record<number, number | null>
   inserted_paragraphs?: number[]
-  document_paragraphs?: ParagraphInfo[]
-  template_paragraphs?: ParagraphInfo[]
 }
 
 export interface FieldResult {
