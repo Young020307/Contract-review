@@ -30,6 +30,8 @@ export interface ValidationRule {
   match_fields: string[]
   radio_group: string
   dependent_paras: number[]
+  amount_match_field: string
+  amount_unit: number
 }
 
 export interface AnnotationItem {

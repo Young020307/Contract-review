@@ -13,6 +13,8 @@ class ValidationRule(BaseModel):
     match_fields: list[str] = []
     radio_group: str = ""
     dependent_paras: list[int] = []
+    amount_match_field: str = ""  # field_name of the Chinese-uppercase counterpart
+    amount_unit: int = 1  # multiplier: 1=元, 1000=千元, 10000=万元
 
 # --- Request Models ---
 class AnnotationItem(BaseModel):
