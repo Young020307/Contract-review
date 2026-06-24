@@ -147,12 +147,12 @@ def test_regex_special_chars_in_fixed_text():
 
 
 def test_fallback_on_mismatch():
-    """Fixed text differs → regex won't match → paragraph treated as unmatched."""
-    print("Test 6: regex mismatch — paragraph not found")
+    """Fixed text differs → regex won't match → positional fallback → char-slice extraction."""
+    print("Test 6: regex mismatch — positional fallback with char-slice")
     with tempfile.TemporaryDirectory() as tmp:
         tpl = os.path.join(tmp, "tpl.docx")
         doc = os.path.join(tmp, "doc.docx")
-        # "方" changed to "万" — fixed-text regex anchors won't match
+        # "方" changed to "万" — regex won't match, but positional fallback maps T0→D0
         make_docx(["甲方：_____公司"], tpl)
         make_docx(["甲万：某某公司"], doc)
 
@@ -161,9 +161,10 @@ def test_fallback_on_mismatch():
         ]
         values = DocxParser.extract_fillable_values(tpl, doc, annotations)
 
-        # Fixed text "甲方：" doesn't match "甲万：" → paragraph not aligned → no extraction
-        assert "0_3" not in values, f"FAIL: mismatched fixed text should prevent extraction"
-        print("  PASS")
+        # Positional fallback matches T0→D0, char-slice extraction still gets a value
+        assert "0_3" in values, f"FAIL: positional fallback should map T0→D0"
+        assert values["0_3"]["value"] != "", f"FAIL: fallback should extract something"
+        print(f"  PASS (fallback value: '{values['0_3']['value']}')")
 
 
 def test_no_fillable_annotations():

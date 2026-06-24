@@ -149,26 +149,42 @@ class DocxParser:
         doc_texts = [p["text"] for p in doc_paras]
         used_docs: set[int] = set()
         mapping: dict[int, int | None] = {}
+        deferred: list[int] = []  # tpl indices that need positional fallback
 
+        # ── Pass 1: high-confidence matches ──
         for p in tpl_paras:
             pi = p["index"]
             text = p["text"]
             anns = ann_by_para.get(pi, [])
+            found = None
 
             if not anns:
-                # No fillable zones: match by exact text equality
-                found = None
+                # No fillable zones — exact, then substring, then high-similarity
                 for j, dt in enumerate(doc_texts):
                     if j in used_docs:
                         continue
                     if dt == text:
                         found = j
                         break
-                mapping[pi] = found
-                if found is not None:
-                    used_docs.add(found)
+                if found is None:
+                    for j, dt in enumerate(doc_texts):
+                        if j in used_docs:
+                            continue
+                        if text in dt or dt in text:
+                            found = j
+                            break
+                if found is None:
+                    from difflib import SequenceMatcher
+                    best_j, best_r = None, 0.95
+                    for j, dt in enumerate(doc_texts):
+                        if j in used_docs:
+                            continue
+                        r = SequenceMatcher(None, text, dt).ratio()
+                        if r > best_r:
+                            best_j, best_r = j, r
+                    found = best_j
             else:
-                # Build fixed-text skeleton segments and construct a regex
+                # Build fixed-text skeleton segments
                 ranges = sorted(
                     [(a["start_char"], a["end_char"]) for a in anns],
                     key=lambda r: r[0])
@@ -184,39 +200,41 @@ class DocxParser:
                     fixed_segments.append(text[pos:])
 
                 if not fixed_segments:
-                    # Entire paragraph is fillable — match next unused doc paragraph.
-                    # Placeholder-only text (like "_____") won't be a substring of
-                    # the filled document text, so fall through to positional match.
-                    found = None
+                    # Entirely fillable — try text inclusion first
                     for j, dt in enumerate(doc_texts):
                         if j in used_docs:
                             continue
                         if text in dt or dt in text:
                             found = j
                             break
-                    if found is None:
-                        # Accept first unused document paragraph (fillable content)
+                    # If no text match, defer to pass 2
+                else:
+                    fixed_len = sum(len(s) for s in fixed_segments)
+                    if fixed_len >= 2:
+                        pattern = ".*?".join(re.escape(s) for s in fixed_segments)
                         for j, dt in enumerate(doc_texts):
                             if j in used_docs:
                                 continue
-                            found = j
-                            break
-                    mapping[pi] = found
-                    if found is not None:
-                        used_docs.add(found)
-                else:
-                    # Build regex: fixed segments separated by .*? (non-greedy)
-                    pattern = ".*?".join(re.escape(s) for s in fixed_segments)
-                    found = None
-                    for j, dt in enumerate(doc_texts):
-                        if j in used_docs:
-                            continue
-                        if re.search(pattern, dt):
-                            found = j
-                            break
-                    mapping[pi] = found
-                    if found is not None:
-                        used_docs.add(found)
+                            if re.search(pattern, dt):
+                                found = j
+                                break
+                    # If fixed text too short, defer to pass 2
+
+            if found is not None:
+                mapping[pi] = found
+                used_docs.add(found)
+            else:
+                deferred.append(pi)
+
+        # ── Pass 2: positional fallback for deferred paragraphs ──
+        remaining_docs = [j for j in range(len(doc_texts)) if j not in used_docs]
+        for pi in deferred:
+            if remaining_docs:
+                doc_j = remaining_docs.pop(0)
+                mapping[pi] = doc_j
+                used_docs.add(doc_j)
+            else:
+                mapping[pi] = None
 
         inserted = sorted(
             [j for j in range(len(doc_texts)) if j not in used_docs])

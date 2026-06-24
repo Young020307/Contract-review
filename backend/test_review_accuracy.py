@@ -220,33 +220,40 @@ for vi, v in enumerate(violations):
 print(f"\n{'='*60}")
 print("可填充区高亮位置验证:")
 
-# 对每个可填充区在模板中的前后文本（固定部分），
-# 检查模板和文档中的固定文本是否一致
+# For each fillable zone, check that the immediately surrounding fixed text
+# (between fillable zones, not the entire paragraph prefix) exists in the
+# document paragraph. This avoids false positives when earlier fillable zones
+# changed the template placeholder underscores to filled values.
 highlight_issues = []
-for ann in fillable_anns:
-    pi = ann["paragraph_index"]
+for pi, anns in sorted(ann_by_para.items()):
     doc_pi = para_map.get(pi)
     if doc_pi is None:
-        continue  # 段被删除，跳过
+        continue
 
-    s, e = ann.get("start_char", 0), ann.get("end_char", 0)
     tpl_p_text = tpl_paras[pi]["text"] if pi < len(tpl_paras) else ""
     doc_p_text = doc_paras[doc_pi]["text"] if doc_pi < len(doc_paras) else ""
 
-    # 标注前和后的固定文本
-    before = tpl_p_text[:s] if s > 0 else ""
-    after = tpl_p_text[e:] if e < len(tpl_p_text) else ""
+    prev_end = 0
+    for ann in sorted(anns, key=lambda a: a.get("start_char", 0)):
+        s, e = ann.get("start_char", 0), ann.get("end_char", 0)
 
-    # 检查文档中相同位置附近是否有对应的固定文本
-    if before and before not in doc_p_text:
-        # 固定文本在文档中不匹配 — 可能高亮到了固定文本
-        highlight_issues.append(
-            f"段 T{pi}→D{doc_pi}: 标注前的固定文本'{before[-30:]}'在文档段中找不到"
-        )
-    if after and after not in doc_p_text:
-        highlight_issues.append(
-            f"段 T{pi}→D{doc_pi}: 标注后的固定文本'{after[:30]}'在文档段中找不到"
-        )
+        # Only check fixed text between the previous fillable zone and this one
+        between = tpl_p_text[prev_end:s] if s > prev_end else ""
+
+        if between and between not in doc_p_text:
+            highlight_issues.append(
+                f"段 T{pi}→D{doc_pi}: 标注间固定文本'{between[:30]}'在文档段中找不到"
+            )
+        prev_end = e
+
+    # Check trailing fixed text after last fillable zone
+    last_end = max((a.get("end_char", 0) for a in anns), default=0)
+    if last_end < len(tpl_p_text):
+        trailing = tpl_p_text[last_end:]
+        if trailing not in doc_p_text:
+            highlight_issues.append(
+                f"段 T{pi}→D{doc_pi}: 末尾固定文本'{trailing[:30]}'在文档段中找不到"
+            )
 
 if highlight_issues:
     print(f"\n⚠️ 发现 {len(highlight_issues)} 个高亮位置问题:")
@@ -257,14 +264,83 @@ if highlight_issues:
 else:
     print("✓ 所有可填充区前后固定文本在文档中存在")
 
-# ── 6. 验证摘要 ──
+def _find_tpl_para_for_range(tr, tpl_paras):
+    """Find template paragraph index for a global template range (overlap check)."""
+    goff = 0
+    for p in tpl_paras:
+        pend = goff + len(p["text"])
+        if tr[0] <= pend and tr[1] >= goff:  # range overlaps this paragraph
+            return p["index"]
+        goff = pend + 1
+    return None
+
+
+def _tpl_para_offsets(tpl_paras):
+    """Return list of (index, goff, pend) for each template paragraph."""
+    result = []
+    goff = 0
+    for p in tpl_paras:
+        pend = goff + len(p["text"])
+        result.append((p["index"], goff, pend))
+        goff = pend + 1
+    return result
+
+
+# ── 6. 前端占位符数量验证 ──
 print(f"\n{'='*60}")
-print("验证摘要:")
-print(f"  段落对齐: {'✓' if len(deleted_tpl) + len(inserted) == abs(len(tpl_paras)-len(doc_paras)) else '⚠ 可能不完整'}")
-print(f"  真实差异: {differences_found} 处")
+print("前端视角验证:")
+
+# 前端 displayItems 逻辑：deleted_tpl 中每个 → 一个 "该条款已删除" 占位符
+placeholder_count = len(deleted_tpl)
+# 插入段不产生占位符（它们正常显示在文档视图中）
+print(f"  左侧占位符数量: {placeholder_count}")
+print(f"  右侧违规数: {len(violations)}")
+print(f"  实际真实删除: {sum(1 for v in violations if v['type'] == 'delete')}")
+
+# 验证占位符位置是否对应真正的删除（非 fillable 差异）
+real_deletions = [v for v in violations if v['type'] == 'delete']
+tpl_deleted_set = set(deleted_tpl)
+
+# 检查每个 delete 违规对应的模板段落是否在 deleted 列表中
+print(f"\n删除验证:")
+for v in real_deletions:
+    tr = v["template_range"]
+    tpl_pi = None
+    goff = 0
+    for p in tpl_paras:
+        pend = goff + len(p["text"])
+        if tr[0] >= goff and tr[0] <= pend:
+            tpl_pi = p["index"]
+            break
+        goff = pend + 1
+    in_deleted = tpl_pi in tpl_deleted_set if tpl_pi is not None else False
+    if in_deleted:
+        print(f"  违规段 T{tpl_pi}: ✓ 整段删除（有占位符）")
+    else:
+        print(f"  违规段 T{tpl_pi}: ✓ 段内差异（段落已匹配，无占位符）")
+
+# 检查是否有多余的占位符（标记为删除但实际不是删除）
+_para_offsets = _tpl_para_offsets(tpl_paras)
+for di in deleted_tpl:
+    di_goff = next((goff for i, goff, pend in _para_offsets if i == di), None)
+    di_pend = next((pend for i, goff, pend in _para_offsets if i == di), None)
+    has_violation = any(
+        v["template_range"][0] <= di_pend and v["template_range"][1] >= di_goff
+        for v in real_deletions
+    ) if di_goff is not None else False
+    tpl_text_short = tpl_paras[di]["text"][:60] if di < len(tpl_paras) else "?"
+    if not has_violation:
+        print(f"  T{di}: ⚠ 占位符标记但无对应违规 — '{tpl_text_short}'")
+    else:
+        print(f"  T{di}: ✓ 占位符与违规一致 — '{tpl_text_short}'")
+
+print(f"\n验证摘要:")
+print(f"  段落对齐: {'✓' if len(tpl_paras) - len(deleted_tpl) + len(inserted) == len(doc_paras) else '⚠ 可能不完整'}")
+print(f"  真实差异: {sum(1 for _ in real_deletions)} 处删除 + {sum(1 for v in violations if v['type']=='insert')} 处新增")
 print(f"  审查违规: {len(violations)} 处")
 print(f"  可填充区提取: {len(values)}/{len(fillable_anns)}")
 print(f"  提取问题: {len(extraction_issues)} 个")
 print(f"  高亮问题: {len(highlight_issues)} 个")
+print(f"  占位符: {placeholder_count} 个 (违规 {len(violations)} 处)")
 
 conn.close()
