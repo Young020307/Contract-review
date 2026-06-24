@@ -17,6 +17,7 @@ from services.validator import RuleValidator
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BACKEND_DIR, "uploads")
+DOC_UPLOAD_DIR = os.path.join(BACKEND_DIR, "documents_uploads")
 
 
 def _resolve_path(file_path: str) -> str:
@@ -212,8 +213,9 @@ async def upload_document(file: UploadFile = File(...), template_id: int = Query
         raise HTTPException(400, "只支持 .docx 文件")
     filename = _decode_filename(file.filename)
     safe_name = f"doc_{uuid.uuid4().hex}_{filename}"
-    file_path = os.path.join(UPLOAD_DIR, safe_name)
-    rel_path = os.path.join("uploads", safe_name)
+    os.makedirs(DOC_UPLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(DOC_UPLOAD_DIR, safe_name)
+    rel_path = os.path.join("documents_uploads", safe_name)
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
     conn = get_connection()

@@ -31,8 +31,8 @@ docs/使用说明.md
 docs/问题记录.md
 docs/superpowers/
 
-# Uploads
-backend/uploads/
+# Uploads (review documents are ephemeral)
+backend/documents_uploads/
 
 # Superpowers
 .superpowers/
