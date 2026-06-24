@@ -305,9 +305,11 @@ const renderedParagraphs = computed<RenderedPara[]>(() => {
 function buildFieldMap(): Record<number, FieldResult[]> {
   const map: Record<number, FieldResult[]> = {}
   if (!validateResult.value) return map
+  const mapping = validateResult.value.paragraph_mapping ?? {}
   for (const r of validateResult.value.results) {
-    if (!map[r.paragraph]) map[r.paragraph] = []
-    map[r.paragraph].push(r)
+    const docPi = mapping[r.paragraph] ?? r.paragraph
+    if (!map[docPi]) map[docPi] = []
+    map[docPi].push(r)
   }
   return map
 }

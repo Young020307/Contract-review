@@ -80,9 +80,11 @@ interface TextSeg { type: 'fixed' | 'fillable'; text: string; pass?: boolean }
 // Build a map: paragraph_index -> array of field results
 const paraFieldsMap = computed(() => {
   const map: Record<number, FieldResult[]> = {}
+  const mapping = props.result.paragraph_mapping ?? {}
   for (const r of props.result.results) {
-    if (!map[r.paragraph]) map[r.paragraph] = []
-    map[r.paragraph].push(r)
+    const docPi = mapping[r.paragraph] ?? r.paragraph
+    if (!map[docPi]) map[docPi] = []
+    map[docPi].push(r)
   }
   return map
 })

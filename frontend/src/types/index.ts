@@ -77,6 +77,8 @@ export interface CompareResult {
   document_text: string
   diffs: DiffSegment[]
   violations: CompareViolation[]
+  paragraph_mapping?: Record<number, number | null>
+  inserted_paragraphs?: number[]
 }
 
 export interface FieldResult {
@@ -96,4 +98,6 @@ export interface ValidateResult {
   results: FieldResult[]
   document_paragraphs: ParagraphInfo[]
   template_paragraphs: ParagraphInfo[]
+  paragraph_mapping?: Record<number, number | null>
+  inserted_paragraphs?: number[]
 }
