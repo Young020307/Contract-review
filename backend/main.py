@@ -258,6 +258,17 @@ def get_document(document_id: int):
     )
 
 
+def _build_fillable_by_para(ann_list: list[dict]) -> dict[int, list[tuple[int, int]]]:
+    """Group fillable zone annotations by template paragraph index."""
+    result: dict[int, list[tuple[int, int]]] = {}
+    for a in ann_list:
+        if a.get("zone_type") != "fillable":
+            continue
+        pi = a["paragraph_index"]
+        result.setdefault(pi, []).append((a["start_char"], a["end_char"]))
+    return result
+
+
 @app.post("/api/review/compare")
 def review_compare(body: ReviewRequest):
     conn = get_connection()
@@ -275,34 +286,21 @@ def review_compare(body: ReviewRequest):
         ).fetchall()
         ann_list = [dict(a) for a in annotations]
 
-        template_text = DocxParser.extract_full_text(template_path)
-        doc_text = DocxParser.extract_full_text(doc_path)
-
-        # Build global fillable zone ranges (in concatenated full text)
-        fillable_ranges = _build_global_ranges(template_path, ann_list)
-
-        # Compute paragraph alignment for frontend display
         template_paras = DocxParser.parse(template_path)
         doc_paras = DocxParser.parse(doc_path)
         alignment = DocxParser.align_paragraphs(template_paras, doc_paras, ann_list)
 
-        result = DiffEngine.compare(template_text, doc_text)
-        result["template_text"] = template_text
-        result["document_text"] = doc_text
+        fillable_by_para = _build_fillable_by_para(ann_list)
 
-        # Neutralize fillable zone diffs to "equal" (they are expected changes)
-        result["diffs"] = _neutralize_fillable_diffs(result["diffs"], fillable_ranges)
-
-        # Filter violations: exclude diffs that fall entirely within fillable zones
-        result["violations"] = [
-            v for v in result["violations"]
-            if not _is_fully_in_fillable(v, fillable_ranges)
-        ]
-
+        result = DiffEngine.compare_aligned(
+            template_paras, doc_paras,
+            alignment["mapping"], alignment["inserted"],
+            fillable_by_para
+        )
+        result["template_text"] = DocxParser.extract_full_text(template_path)
+        result["document_text"] = DocxParser.extract_full_text(doc_path)
         result["paragraph_mapping"] = alignment["mapping"]
         result["inserted_paragraphs"] = alignment["inserted"]
-        result["template_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in template_paras]
-        result["document_paragraphs"] = [{"index": p["index"], "text": p["text"]} for p in doc_paras]
 
         conn.execute(
             "INSERT INTO review_tasks (template_id, document_id, task_type, result) VALUES (?, ?, 'compare', ?)",
@@ -312,55 +310,6 @@ def review_compare(body: ReviewRequest):
         return result
     finally:
         conn.close()
-
-
-def _build_global_ranges(file_path: str, ann_list: list[dict]) -> list[tuple[int, int]]:
-    """Compute global character ranges for fillable zones in concatenated full text."""
-    paras = DocxParser.parse(file_path)
-    offset = 0
-    ranges = []
-    for p in paras:
-        text = p["text"]
-        for a in ann_list:
-            if a["paragraph_index"] == p["index"] and a.get("zone_type") == "fillable":
-                start = offset + a["start_char"]
-                end = offset + a["end_char"]
-                ranges.append((start, end))
-        offset += len(text) + 1  # +1 for the \n separator
-    return ranges
-
-
-def _is_in_fillable(i1: int, i2: int, fillable_ranges: list[tuple[int, int]]) -> bool:
-    """Check if a template range falls within fillable zones (with small boundary fuzz)."""
-    for fs, fe in fillable_ranges:
-        if i1 == i2:
-            # Insert: inside non-zero-width zone, or exactly at zero-width marker
-            if (fs <= i1 < fe) or (fs == fe and fs == i1):
-                return True
-        else:
-            # Delete/replace: fully within zone, or starts within zone and overhangs ≤ 2 chars
-            # (handles trailing punctuation like "。" that belongs to the fillable content)
-            if fs <= i1 and i2 <= fe:
-                return True
-            if fs <= i1 < fe and i2 - fe <= 2:
-                return True
-    return False
-
-
-def _is_fully_in_fillable(violation: dict, fillable_ranges: list[tuple[int, int]]) -> bool:
-    tr = violation.get("template_range", [0, 0])
-    return _is_in_fillable(tr[0], tr[1], fillable_ranges)
-
-
-def _neutralize_fillable_diffs(diffs: list[dict], fillable_ranges: list[tuple[int, int]]) -> list[dict]:
-    """Change fillable zone diffs to 'equal' so the inline document view doesn't highlight expected changes."""
-    for d in diffs:
-        if d["type"] == "equal":
-            continue
-        tr = d.get("template_range", [0, 0])
-        if _is_in_fillable(tr[0], tr[1], fillable_ranges):
-            d["type"] = "equal"
-    return diffs
 
 
 def _find_checkbox_annotation(ann_list: list[dict], field_result: dict) -> dict | None:

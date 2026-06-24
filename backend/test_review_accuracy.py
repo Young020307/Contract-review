@@ -167,22 +167,25 @@ else:
 
 # ── 4. 篡改比对结果 ──
 print(f"\n{'='*60}")
-print("篡改比对 (DiffEngine.compare + 填充区中立化):")
+print("篡改比对 (per-paragraph diff with alignment):")
 
-from main import _build_global_ranges, _neutralize_fillable_diffs, _is_fully_in_fillable
+# Build fillable zones per paragraph
+fillable_by_para: dict[int, list[tuple[int, int]]] = {}
+for a in ann_list:
+    if a.get("zone_type") != "fillable":
+        continue
+    pi = a["paragraph_index"]
+    fillable_by_para.setdefault(pi, []).append((a["start_char"], a["end_char"]))
 
-fillable_ranges = _build_global_ranges(TPL_PATH, ann_list)
-diff_result = DiffEngine.compare(tpl_text, doc_text)
-diffs = _neutralize_fillable_diffs(diff_result["diffs"], fillable_ranges)
-violations = [v for v in diff_result["violations"]
-              if not _is_fully_in_fillable(v, fillable_ranges)]
+diff_result = DiffEngine.compare_aligned(
+    tpl_paras, doc_paras,
+    alignment["mapping"], alignment["inserted"],
+    fillable_by_para
+)
+violations = diff_result["violations"]
 
-print(f"Diff 段数: {len(diffs)}")
-print(f"  其中 equal: {sum(1 for d in diffs if d['type']=='equal')}")
-print(f"  其中 insert: {sum(1 for d in diffs if d['type']=='insert')}")
-print(f"  其中 delete: {sum(1 for d in diffs if d['type']=='delete')}")
-print(f"  其中 replace: {sum(1 for d in diffs if d['type']=='replace')}")
-print(f"违规数 (排除填充区): {len(violations)}")
+print(f"Diff 段数: {len(diff_result['diffs'])}")
+print(f"违规数: {len(violations)}")
 
 print("\n违规详情:")
 for vi, v in enumerate(violations):
