@@ -62,40 +62,43 @@ const focusedZone = ref<{ paraIndex: number; startChar: number } | null>(null)
 const saving = ref(false)
 
 onMounted(async () => {
-  const template = await getTemplate(templateId)
-  docxUrl.value = `/api/documents/proxy-template/${templateId}`
-  docxIndices.value = template.paragraphs.map(p => p.index)
-  const detected = autoAnnotateUnderscores(template.paragraphs)
   try {
-    const existing = await getAnnotations(templateId)
-    if (existing.length > 0) {
-      const existingKeys = new Set(existing.map((a: any) => `${a.paragraph_index}_${a.start_char}`))
-      const merged: AnnotationItem[] = existing.map((a: any) => ({
-        paragraph_index: a.paragraph_index,
-        start_char: a.start_char,
-        end_char: a.end_char,
-        zone_type: a.zone_type as 'fixed' | 'fillable' | 'variable',
-        rules: a.rules ? JSON.parse(a.rules) : undefined
-      }))
-      for (const d of detected) {
-        if (existingKeys.has(`${d.paragraph_index}_${d.start_char}`)) continue
-        // Skip if overlaps with any saved annotation in the same paragraph
-        const overlaps = merged.some(e =>
-          e.paragraph_index === d.paragraph_index &&
-          e.start_char < d.end_char && d.start_char < e.end_char
-        )
-        if (!overlaps) {
-          merged.push(d)
+    const template = await getTemplate(templateId)
+    docxUrl.value = `/api/documents/proxy-template/${templateId}`
+    docxIndices.value = template.paragraphs.map(p => p.index)
+    const detected = autoAnnotateUnderscores(template.paragraphs)
+    try {
+      const existing = await getAnnotations(templateId)
+      if (existing.length > 0) {
+        const existingKeys = new Set(existing.map((a: any) => `${a.paragraph_index}_${a.start_char}`))
+        const merged: AnnotationItem[] = existing.map((a: any) => ({
+          paragraph_index: a.paragraph_index,
+          start_char: a.start_char,
+          end_char: a.end_char,
+          zone_type: a.zone_type as 'fixed' | 'fillable' | 'variable',
+          rules: a.rules ? JSON.parse(a.rules) : undefined
+        }))
+        for (const d of detected) {
+          if (existingKeys.has(`${d.paragraph_index}_${d.start_char}`)) continue
+          const overlaps = merged.some(e =>
+            e.paragraph_index === d.paragraph_index &&
+            e.start_char < d.end_char && d.start_char < e.end_char
+          )
+          if (!overlaps) {
+            merged.push(d)
+          }
         }
+        annotations.value = merged
+      } else {
+        annotations.value = detected
+        const fillCount = detected.filter(a => a.zone_type === 'fillable').length
+        const fixedCount = detected.filter(a => a.zone_type === 'fixed').length
+        ElMessage.success(`已自动标注：${fillCount} 个填充区 + ${fixedCount} 个固定区，请完善后保存`)
       }
-      annotations.value = merged
-    } else {
-      annotations.value = detected
-      const fillCount = detected.filter(a => a.zone_type === 'fillable').length
-      const fixedCount = detected.filter(a => a.zone_type === 'fixed').length
-      ElMessage.success(`已自动标注：${fillCount} 个填充区 + ${fixedCount} 个固定区，请完善后保存`)
-    }
-  } catch { /* no existing annotations */ }
+    } catch { /* no existing annotations */ }
+  } catch {
+    ElMessage.error('加载模板失败，请确认模板文件完整且未被移动')
+  }
 })
 
 function autoAnnotateUnderscores(paragraphs: ParagraphInfo[]): AnnotationItem[] {

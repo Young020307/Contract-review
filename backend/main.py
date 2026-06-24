@@ -23,10 +23,13 @@ def _resolve_path(file_path: str) -> str:
     """Resolve a stored file path to an absolute path.
 
     Handles both legacy absolute paths and relative paths (uploads/...).
+    Normalises platform-specific separators so databases created on one OS
+    work when cloned and run on another.
     """
     if os.path.isabs(file_path):
         return file_path
-    return os.path.join(BACKEND_DIR, file_path)
+    normalised = file_path.replace("\\", os.sep).replace("/", os.sep)
+    return os.path.join(BACKEND_DIR, normalised)
 
 
 def _decode_filename(name: str) -> str:
