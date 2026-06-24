@@ -24,6 +24,7 @@
         :selected-start="selectedStart"
         :selected-end="selectedEnd"
         :clicked-annotation="clickedAnnotation"
+        :para-indices="docxIndices"
         @mark-selection="handleMarkSelection"
         @save="handleSave"
         @select-para="handleParagraphClick"

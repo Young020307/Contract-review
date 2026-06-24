@@ -86,6 +86,13 @@
           <el-form-item label="单选组名">
             <el-input v-model="rules.radio_group" placeholder="输入组名，同组互斥" size="small" />
           </el-form-item>
+          <el-form-item label="管辖段落">
+            <el-select v-model="rules.dependent_paras" multiple clearable
+              placeholder="选择从属段落号" size="small" style="width:100%">
+              <el-option v-for="idx in paraIndices" :key="idx"
+                :label="'段落 ' + idx" :value="idx" />
+            </el-select>
+          </el-form-item>
           <div class="btn-row">
             <el-button type="primary" @click="confirmFillable">确认规则</el-button>
             <el-button @click="showFillableRules = false">取消</el-button>
@@ -147,6 +154,7 @@ const props = defineProps<{
   selectedStart: number | null
   selectedEnd: number | null
   clickedAnnotation: { paraIndex: number; startChar: number; zoneType: string } | null
+  paraIndices: number[]
 }>()
 
 const emit = defineEmits<{
