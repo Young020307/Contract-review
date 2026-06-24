@@ -109,6 +109,15 @@ function autoAnnotateUnderscores(paragraphs: ParagraphInfo[]): AnnotationItem[] 
       if (/^_+$/.test(slice)) continue
       fillableRanges.push([s, e])
     }
+    // 3) table cells only: trailing "：" with no fillable → zero-width fillable
+    if (para.is_table_cell && text.length > 0 && /[：:]\s*$/.test(text)) {
+      const lastFillableEnd = fillableRanges.length > 0
+        ? Math.max(...fillableRanges.map(r => r[1]))
+        : -1
+      if (lastFillableEnd < text.length) {
+        fillableRanges.push([text.length, text.length])
+      }
+    }
     // merge overlapping / adjacent ranges
     const merged = mergeRanges(fillableRanges)
     for (const [start, end] of merged) {

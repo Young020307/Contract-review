@@ -106,6 +106,7 @@ class RuleValidator:
                 field_result["pass"] = False
                 field_result["reason"] = f"与「{match_field}」不一致"
 
+        results.sort(key=lambda r: r["pass"])
         return {"results": results}
 
     @staticmethod

@@ -65,9 +65,16 @@
             <el-input v-model="rules.regex" placeholder="如: ^1[3-9]\d{9}$" />
           </el-form-item>
           <el-form-item label="允许值">
-            <el-select v-model="rules.allowed_values" multiple filterable allow-create
-              placeholder="输入后回车添加" size="small" style="width:100%">
-            </el-select>
+            <div class="av-list">
+              <el-tag v-for="(v, i) in rules.allowed_values" :key="i" closable size="small"
+                @close="removeAllowedValue(i)">{{ v }}</el-tag>
+              <span v-if="rules.allowed_values.length === 0" class="av-empty">暂无，请在下方添加</span>
+            </div>
+            <div class="av-input-row">
+              <el-input v-model="allowedValueInput" placeholder="输入允许值后回车" size="small"
+                @keyup.enter="addAllowedValue" />
+              <el-button @click="addAllowedValue" size="small" :disabled="!allowedValueInput.trim()">添加</el-button>
+            </div>
           </el-form-item>
           <el-form-item label="匹配字段">
             <el-select v-model="rules.match_field" clearable placeholder="选择需一致的字段"
@@ -151,6 +158,7 @@ const emit = defineEmits<{
 const showFillableRules = ref(false)
 const editingAnnotation = ref<{ paraIndex: number; startChar: number } | null>(null)
 const annFilter = ref<'all' | 'fillable' | 'fixed'>('all')
+const allowedValueInput = ref('')
 
 const fillableCount = computed(() => props.annotations.filter(a => a.zone_type === 'fillable').length)
 const fixedCount = computed(() => props.annotations.filter(a => a.zone_type === 'fixed').length)
@@ -191,6 +199,21 @@ watch(() => props.clickedAnnotation, (val) => {
       setTimeout(() => el.classList.remove('ann-flash'), 1200)
     }
   })
+  if (val.zoneType === 'fillable') {
+    const ann = props.annotations.find(
+      a => a.paragraph_index === val.paraIndex && a.start_char === val.startChar
+    )
+    if (ann?.rules) {
+      rules.value = Object.assign(
+        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '' },
+        ann.rules
+      )
+    } else {
+      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_field: '' }
+    }
+    editingAnnotation.value = { paraIndex: val.paraIndex, startChar: val.startChar }
+    showFillableRules.value = true
+  }
 })
 
 watch(() => props.selectedText, () => { showFillableRules.value = false })
@@ -285,6 +308,19 @@ function handleAnnItemClick(a: AnnotationItem) {
     editingAnnotation.value = { paraIndex: a.paragraph_index, startChar: a.start_char }
     showFillableRules.value = true
   }
+}
+
+function addAllowedValue() {
+  const v = allowedValueInput.value.trim()
+  if (!v) return
+  if (!rules.value.allowed_values.includes(v)) {
+    rules.value.allowed_values.push(v)
+  }
+  allowedValueInput.value = ''
+}
+
+function removeAllowedValue(index: number) {
+  rules.value.allowed_values.splice(index, 1)
 }
 
 function save() { emit('save') }
@@ -420,6 +456,25 @@ function save() { emit('save') }
   font-weight: 600;
   color: var(--ink);
   margin: 0 0 var(--space-3);
+}
+
+/* Allowed values */
+.av-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.av-empty {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+.av-input-row {
+  display: flex;
+  gap: 6px;
+}
+.av-input-row .el-button {
+  flex-shrink: 0;
 }
 
 .tb-divider {

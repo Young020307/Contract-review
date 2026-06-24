@@ -128,7 +128,7 @@ def get_template(template_id: int):
         return TemplateDetailResponse(
             id=row["id"],
             name=row["name"],
-            paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", [])) for p in paragraphs],
+            paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", []), is_table_cell=p.get("is_table_cell", False)) for p in paragraphs],
             created_at=row["created_at"] or ""
         )
     finally:
@@ -214,7 +214,7 @@ async def upload_document(file: UploadFile = File(...), template_id: int = Query
         id=doc_id,
         name=filename,
         template_id=template_id,
-        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", [])) for p in paragraphs],
+        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", []), is_table_cell=p.get("is_table_cell", False)) for p in paragraphs],
         uploaded_at=""
     )
 
@@ -236,7 +236,7 @@ def get_document(document_id: int):
         id=row["id"],
         name=row["name"],
         template_id=row["template_id"],
-        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", [])) for p in paragraphs],
+        paragraphs=[ParagraphInfo(index=p["index"], text=p["text"], underline_ranges=p.get("underline_ranges", []), is_table_cell=p.get("is_table_cell", False)) for p in paragraphs],
         uploaded_at=row["uploaded_at"] or ""
     )
 
@@ -301,15 +301,26 @@ def _build_global_ranges(file_path: str, ann_list: list[dict]) -> list[tuple[int
     return ranges
 
 
+def _is_in_fillable(i1: int, i2: int, fillable_ranges: list[tuple[int, int]]) -> bool:
+    """Check if a template range falls within fillable zones (with small boundary fuzz)."""
+    for fs, fe in fillable_ranges:
+        if i1 == i2:
+            # Insert: inside non-zero-width zone, or exactly at zero-width marker
+            if (fs <= i1 < fe) or (fs == fe and fs == i1):
+                return True
+        else:
+            # Delete/replace: fully within zone, or starts within zone and overhangs ≤ 2 chars
+            # (handles trailing punctuation like "。" that belongs to the fillable content)
+            if fs <= i1 and i2 <= fe:
+                return True
+            if fs <= i1 < fe and i2 - fe <= 2:
+                return True
+    return False
+
+
 def _is_fully_in_fillable(violation: dict, fillable_ranges: list[tuple[int, int]]) -> bool:
-    """Check if the violation's template range lies entirely within fillable zones."""
     tr = violation.get("template_range", [0, 0])
-    i1, i2 = tr[0], tr[1]
-    # For insert (i1 == i2): check if insertion point is inside a fillable zone
-    if i1 == i2:
-        return any(fs <= i1 < fe for fs, fe in fillable_ranges)
-    # For delete/replace: check if the entire range is within a single fillable zone
-    return any(fs <= i1 and i2 <= fe for fs, fe in fillable_ranges)
+    return _is_in_fillable(tr[0], tr[1], fillable_ranges)
 
 
 def _neutralize_fillable_diffs(diffs: list[dict], fillable_ranges: list[tuple[int, int]]) -> list[dict]:
@@ -318,12 +329,7 @@ def _neutralize_fillable_diffs(diffs: list[dict], fillable_ranges: list[tuple[in
         if d["type"] == "equal":
             continue
         tr = d.get("template_range", [0, 0])
-        i1, i2 = tr[0], tr[1]
-        if i1 == i2:
-            in_zone = any(fs <= i1 < fe for fs, fe in fillable_ranges)
-        else:
-            in_zone = any(fs <= i1 and i2 <= fe for fs, fe in fillable_ranges)
-        if in_zone:
+        if _is_in_fillable(tr[0], tr[1], fillable_ranges):
             d["type"] = "equal"
     return diffs
 

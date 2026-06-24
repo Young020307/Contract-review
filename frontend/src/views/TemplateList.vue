@@ -9,7 +9,7 @@
 
     <div class="table-card">
       <el-table :data="templates" stripe highlight-current-row>
-        <el-table-column prop="id" label="ID" width="64" />
+        <el-table-column type="index" label="序号" width="64" />
         <el-table-column prop="name" label="模板名称" />
         <el-table-column prop="paragraph_count" label="段落数" width="88" align="center" />
         <el-table-column prop="created_at" label="上传时间" width="176" />

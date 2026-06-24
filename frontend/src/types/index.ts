@@ -2,6 +2,7 @@ export interface ParagraphInfo {
   index: number
   text: string
   underline_ranges?: [number, number][]
+  is_table_cell?: boolean
 }
 
 export interface TemplateInfo {

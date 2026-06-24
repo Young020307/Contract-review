@@ -32,6 +32,7 @@ class ParagraphInfo(BaseModel):
     index: int
     text: str
     underline_ranges: list[list[int]] = []
+    is_table_cell: bool = False
 
 class TemplateResponse(BaseModel):
     id: int

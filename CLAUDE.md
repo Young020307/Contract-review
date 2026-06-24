@@ -1,5 +1,16 @@
 # CLAUDE.md
 
+## 项目技术栈
+
+- **后端**: FastAPI (Python)，使用 `uv` 管理依赖和运行，所有后端命令需在 `backend/` 目录下执行
+- **前端**: Vue 3 + TypeScript + Element Plus，位于 `frontend/`
+- 常用命令:
+  - `cd backend && uv run python main.py` — 启动后端服务
+  - `cd backend && uv add <package>` — 添加 Python 依赖
+  - `cd backend && uv run pytest` — 运行后端测试
+
+---
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
