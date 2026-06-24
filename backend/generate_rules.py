@@ -9,8 +9,17 @@ Run: uv run python generate_rules.py
 
 import re
 import json
+import os
 from database import get_connection
 from services.parser import DocxParser
+
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _resolve_path(file_path: str) -> str:
+    if os.path.isabs(file_path):
+        return file_path
+    return os.path.join(BACKEND_DIR, file_path)
 
 
 def classify(text_before, text_after, full_text, paragraph_index, is_table_cell, is_zero_width):
@@ -882,7 +891,7 @@ def main():
         if not anns:
             continue
 
-        paras = DocxParser.parse(tpl['file_path'])
+        paras = DocxParser.parse(_resolve_path(tpl['file_path']))
         print(f"\n{'='*60}")
         print(f"Template ID={tid}: {tpl['name']} ({len(anns)} fillable zones)")
         print(f"{'='*60}")

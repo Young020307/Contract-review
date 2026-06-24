@@ -15,6 +15,19 @@ from services.parser import DocxParser
 from services.diff_engine import DiffEngine
 from services.validator import RuleValidator
 
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BACKEND_DIR, "uploads")
+
+
+def _resolve_path(file_path: str) -> str:
+    """Resolve a stored file path to an absolute path.
+
+    Handles both legacy absolute paths and relative paths (uploads/...).
+    """
+    if os.path.isabs(file_path):
+        return file_path
+    return os.path.join(BACKEND_DIR, file_path)
+
 
 def _decode_filename(name: str) -> str:
     """Fix filenames sent with incorrect encoding by the HTTP client.
@@ -36,7 +49,6 @@ def _decode_filename(name: str) -> str:
         except UnicodeDecodeError:
             continue
     return name
-from services.validator import RuleValidator
 
 app = FastAPI(title="合同智能审查系统 Demo")
 
@@ -55,7 +67,6 @@ def startup():
 def health():
     return {"status": "ok"}
 
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -66,6 +77,7 @@ async def upload_template(file: UploadFile = File(...)):
     filename = _decode_filename(file.filename)
     safe_name = f"{uuid.uuid4().hex}_{filename}"
     file_path = os.path.join(UPLOAD_DIR, safe_name)
+    rel_path = os.path.join("uploads", safe_name)
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
     conn = get_connection()
@@ -73,7 +85,7 @@ async def upload_template(file: UploadFile = File(...)):
         paragraphs = DocxParser.parse(file_path)
         cur = conn.execute(
             "INSERT INTO templates (name, file_path, paragraph_count) VALUES (?, ?, ?)",
-            (filename, file_path, len(paragraphs))
+            (filename, rel_path, len(paragraphs))
         )
         conn.commit()
         template_id = cur.lastrowid
@@ -102,6 +114,7 @@ def delete_template(template_id: int):
         row = conn.execute("SELECT id, file_path FROM templates WHERE id = ?", (template_id,)).fetchone()
         if not row:
             raise HTTPException(404, "模板不存在")
+        file_path = _resolve_path(row["file_path"])
         # Delete related records first (FKs without CASCADE)
         conn.execute("DELETE FROM review_tasks WHERE template_id = ?", (template_id,))
         conn.execute("DELETE FROM documents WHERE template_id = ?", (template_id,))
@@ -110,8 +123,8 @@ def delete_template(template_id: int):
         conn.execute("DELETE FROM templates WHERE id = ?", (template_id,))
         conn.commit()
         # Remove uploaded file
-        if os.path.exists(row["file_path"]):
-            os.remove(row["file_path"])
+        if os.path.exists(file_path):
+            os.remove(file_path)
     finally:
         conn.close()
     return {"ok": True}
@@ -124,7 +137,7 @@ def get_template(template_id: int):
         row = conn.execute("SELECT id, name, file_path, created_at FROM templates WHERE id = ?", (template_id,)).fetchone()
         if not row:
             raise HTTPException(404, "模板不存在")
-        paragraphs = DocxParser.parse(row["file_path"])
+        paragraphs = DocxParser.parse(_resolve_path(row["file_path"]))
         return TemplateDetailResponse(
             id=row["id"],
             name=row["name"],
@@ -187,7 +200,7 @@ async def proxy_template_file(template_id: int):
     conn.close()
     if not row:
         raise HTTPException(404)
-    return FileResponse(row["file_path"], media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    return FileResponse(_resolve_path(row["file_path"]), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
 @app.post("/api/documents/upload", response_model=DocumentResponse)
@@ -197,6 +210,7 @@ async def upload_document(file: UploadFile = File(...), template_id: int = Query
     filename = _decode_filename(file.filename)
     safe_name = f"doc_{uuid.uuid4().hex}_{filename}"
     file_path = os.path.join(UPLOAD_DIR, safe_name)
+    rel_path = os.path.join("uploads", safe_name)
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
     conn = get_connection()
@@ -204,7 +218,7 @@ async def upload_document(file: UploadFile = File(...), template_id: int = Query
         paragraphs = DocxParser.parse(file_path)
         cur = conn.execute(
             "INSERT INTO documents (template_id, name, file_path) VALUES (?, ?, ?)",
-            (template_id, filename, file_path)
+            (template_id, filename, rel_path)
         )
         conn.commit()
         doc_id = cur.lastrowid
@@ -229,7 +243,7 @@ def get_document(document_id: int):
         ).fetchone()
         if not row:
             raise HTTPException(404, "文件不存在")
-        paragraphs = DocxParser.parse(row["file_path"])
+        paragraphs = DocxParser.parse(_resolve_path(row["file_path"]))
     finally:
         conn.close()
     return DocumentResponse(
@@ -249,6 +263,8 @@ def review_compare(body: ReviewRequest):
         document = conn.execute("SELECT id, file_path FROM documents WHERE id = ?", (body.document_id,)).fetchone()
         if not template or not document:
             raise HTTPException(404, "模板或文件不存在")
+        template_path = _resolve_path(template["file_path"])
+        doc_path = _resolve_path(document["file_path"])
 
         annotations = conn.execute(
             "SELECT paragraph_index, start_char, end_char, zone_type FROM annotations WHERE template_id = ?",
@@ -256,11 +272,11 @@ def review_compare(body: ReviewRequest):
         ).fetchall()
         ann_list = [dict(a) for a in annotations]
 
-        template_text = DocxParser.extract_full_text(template["file_path"])
-        doc_text = DocxParser.extract_full_text(document["file_path"])
+        template_text = DocxParser.extract_full_text(template_path)
+        doc_text = DocxParser.extract_full_text(doc_path)
 
         # Build global fillable zone ranges (in concatenated full text)
-        fillable_ranges = _build_global_ranges(template["file_path"], ann_list)
+        fillable_ranges = _build_global_ranges(template_path, ann_list)
 
         result = DiffEngine.compare(template_text, doc_text)
         result["template_text"] = template_text
@@ -360,6 +376,8 @@ def review_validate(body: ReviewRequest):
         document = conn.execute("SELECT id, file_path FROM documents WHERE id = ?", (body.document_id,)).fetchone()
         if not template or not document:
             raise HTTPException(404, "模板或文件不存在")
+        template_path = _resolve_path(template["file_path"])
+        doc_path = _resolve_path(document["file_path"])
 
         annotations = conn.execute(
             "SELECT paragraph_index, start_char, end_char, zone_type, rules FROM annotations WHERE template_id = ?",
@@ -367,16 +385,16 @@ def review_validate(body: ReviewRequest):
         ).fetchall()
         ann_list = [dict(a) for a in annotations]
 
-        values = DocxParser.extract_fillable_values(template["file_path"], document["file_path"], ann_list)
+        values = DocxParser.extract_fillable_values(template_path, doc_path, ann_list)
         checkbox_statuses = DocxParser.detect_checkbox_status(
-            template["file_path"], document["file_path"], ann_list
+            template_path, doc_path, ann_list
         )
         values.update(checkbox_statuses)
         result = RuleValidator.validate(values, ann_list)
 
         # Attach full paragraph text to each result for context display
-        doc_paras_list = DocxParser.parse(document["file_path"])
-        template_paras_list = DocxParser.parse(template["file_path"])
+        doc_paras_list = DocxParser.parse(doc_path)
+        template_paras_list = DocxParser.parse(template_path)
         doc_paras = {p["index"]: p["text"] for p in doc_paras_list}
         template_paras = {p["index"]: p["text"] for p in template_paras_list}
         for r in result["results"]:
