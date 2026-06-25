@@ -79,55 +79,6 @@ class DocxParser:
         return "\n".join(_get_all_texts(doc))
 
     @staticmethod
-    def extract_fixed_text(file_path: str, annotations: list[dict]) -> str:
-        doc = Document(file_path)
-        all_texts = _get_all_texts(doc)
-        ann_by_para = {}
-        for a in annotations:
-            ann_by_para.setdefault(a["paragraph_index"], []).append(a)
-
-        texts = []
-        for pi, text in enumerate(all_texts):
-            if pi in ann_by_para:
-                fillable_ranges = sorted(
-                    [(a["start_char"], a["end_char"]) for a in ann_by_para[pi]
-                     if a.get("zone_type") == "fillable"]
-                )
-                if not fillable_ranges:
-                    texts.append(text)
-                    continue
-                fixed_parts = []
-                pos = 0
-                for start, end in fillable_ranges:
-                    if pos < start:
-                        fixed_parts.append(text[pos:start])
-                    pos = max(pos, end)
-                if pos < len(text):
-                    fixed_parts.append(text[pos:])
-                result = "".join(fixed_parts).strip()
-                if result:
-                    texts.append(result)
-            else:
-                texts.append(text)
-        return "\n".join(texts)
-
-    @staticmethod
-    def _get_fixed_text_per_para(text: str, fillable_ranges: list[tuple[int, int]]) -> str:
-        """Remove fillable zones from a single paragraph's text, returning the skeleton."""
-        if not fillable_ranges:
-            return text
-        sorted_ranges = sorted(fillable_ranges, key=lambda r: r[0])
-        fixed_parts = []
-        pos = 0
-        for start, end in sorted_ranges:
-            if pos < start:
-                fixed_parts.append(text[pos:start])
-            pos = max(pos, end)
-        if pos < len(text):
-            fixed_parts.append(text[pos:])
-        return "".join(fixed_parts)
-
-    @staticmethod
     def align_paragraphs(tpl_paras: list[dict], doc_paras: list[dict],
                          annotations: list[dict]) -> dict:
         """Align template paragraphs to document paragraphs using fixed-text regex matching.
@@ -138,8 +89,6 @@ class DocxParser:
 
         Returns {"mapping": {tpl_idx: doc_idx|None}, "inserted": [doc_idx, ...]}
         """
-        import re
-
         ann_by_para: dict[int, list[dict]] = {}
         for a in annotations:
             if a.get("zone_type") != "fillable":

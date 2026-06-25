@@ -562,10 +562,6 @@ function save() { emit('save') }
   font-size: 12px;
   color: var(--ink-muted);
 }
-.av-empty {
-  font-size: 12px;
-  color: var(--ink-muted);
-}
 .av-list {
   display: flex;
   flex-wrap: wrap;

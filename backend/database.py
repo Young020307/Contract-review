@@ -10,13 +10,6 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
-def get_db():
-    conn = get_connection()
-    try:
-        yield conn
-    finally:
-        conn.close()
-
 def init_db():
     conn = get_connection()
     conn.executescript("""

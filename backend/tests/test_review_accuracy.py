@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from services.parser import DocxParser
 from services.diff_engine import DiffEngine
-from services.validator import RuleValidator
+
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -266,16 +266,6 @@ if highlight_issues:
         print(f"  ... 还有 {len(highlight_issues) - 20} 个")
 else:
     print("✓ 所有可填充区前后固定文本在文档中存在")
-
-def _find_tpl_para_for_range(tr, tpl_paras):
-    """Find template paragraph index for a global template range (overlap check)."""
-    goff = 0
-    for p in tpl_paras:
-        pend = goff + len(p["text"])
-        if tr[0] <= pend and tr[1] >= goff:  # range overlaps this paragraph
-            return p["index"]
-        goff = pend + 1
-    return None
 
 
 def _tpl_para_offsets(tpl_paras):

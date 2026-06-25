@@ -57,33 +57,5 @@ class DocumentResponse(BaseModel):
     paragraphs: list[ParagraphInfo]
     uploaded_at: str
 
-class DiffSegment(BaseModel):
-    type: Literal["equal", "insert", "delete", "replace"]
-    template_range: tuple[int, int]
-    doc_range: tuple[int, int]
-    value: str
 
-class Violation(BaseModel):
-    paragraph: int
-    type: str  # "insert" | "delete" | "replace"
-    template_text: str
-    actual_text: str
 
-class CompareResult(BaseModel):
-    template_text: str
-    document_text: str
-    diffs: list[DiffSegment]
-    violations: list[Violation]
-
-class FieldResult(BaseModel):
-    paragraph: int
-    start_char: int = 0
-    end_char: int = 0
-    field_name: str
-    actual_value: str
-    rule: str
-    pass_: bool
-    reason: str = ""
-
-class ValidateResult(BaseModel):
-    results: list[FieldResult]

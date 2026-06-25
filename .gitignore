@@ -37,5 +37,8 @@ backend/temp/
 # Superpowers
 .superpowers/
 
+# Environment
+.env
+
 # Claude
 .claude/

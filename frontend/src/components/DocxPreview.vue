@@ -1,5 +1,5 @@
 <template>
-  <div class="preview-pane" ref="container">
+  <div class="preview-pane">
     <div class="pane-head">
       <span class="pane-title">模板文档预览</span>
       <span v-if="!loading" class="pane-meta">{{ paraTexts.size }} 段</span>
@@ -30,7 +30,7 @@ const emit = defineEmits<{
   annotationClick: [paraIndex: number, startChar: number, endChar: number, zoneType: string, text: string]
 }>()
 
-const container = ref<HTMLElement>()
+
 const contentEl = ref<HTMLElement>()
 const loading = ref(false)
 const paraTexts = ref<Map<number, string>>(new Map())

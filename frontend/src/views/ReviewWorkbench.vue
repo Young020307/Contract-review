@@ -121,7 +121,7 @@
           <span>实际文档</span>
           <span class="doc-meta">{{ activeDoc?.name }}</span>
         </div>
-        <div class="panel-body doc-body" ref="docBody">
+        <div class="panel-body doc-body">
           <template v-for="item in displayItems" :key="item.key">
             <div v-if="item.type === 'placeholder'" class="deleted-placeholder"
               :ref="(el: any) => setPlaceholderRef(item.templateIndex, el)">
@@ -239,7 +239,7 @@ const validateResult = computed(() => docResults[activeDoc.value?.id ?? 0]?.vali
 
 const showTemplate = ref(false)
 const resultFilter = ref<'tamper' | 'validate' | 'all'>('all')
-const docBody = ref<HTMLDivElement | null>(null)
+
 const paraRefs = ref<Record<number, HTMLElement>>({})
 const placeholderRefs = ref<Record<number, HTMLElement>>({})
 const vioRefs = ref<Record<number, HTMLElement>>({})

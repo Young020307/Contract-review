@@ -65,6 +65,7 @@ export interface DiffSegment {
   value: string
 }
 
+
 export interface CompareViolation {
   paragraph: number
   type: string

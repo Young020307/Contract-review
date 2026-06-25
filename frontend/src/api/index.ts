@@ -41,10 +41,6 @@ export async function uploadDocument(file: File, templateId: number): Promise<Do
   return data
 }
 
-export async function getDocument(id: number): Promise<DocumentInfo> {
-  const { data } = await api.get(`/documents/${id}`)
-  return data
-}
 
 export async function reviewCompare(templateId: number, documentId: number): Promise<CompareResult> {
   const { data } = await api.post('/review/compare', { template_id: templateId, document_id: documentId })
