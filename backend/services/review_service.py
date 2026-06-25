@@ -39,7 +39,7 @@ def _check_first_paragraph(tpl_paras: list[dict], doc_paras: list[dict]) -> None
     if not tpl_first or not doc_first:
         return
     ratio = difflib.SequenceMatcher(None, tpl_first, doc_first).ratio()
-    if ratio < 0.5:
+    if ratio < 1.0:
         raise TemplateMismatchError("上传的文件与所选模板不匹配，请确认文件正确")
 
 

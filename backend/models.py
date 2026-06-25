@@ -1,3 +1,6 @@
+import time
+from typing import Any
+
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 
@@ -58,4 +61,9 @@ class DocumentResponse(BaseModel):
     uploaded_at: str = Field(..., description="上传时间")
 
 
-
+class ApiResponse(BaseModel):
+    code: int = Field(..., description="HTTP 状态码")
+    message: str = Field(..., description="响应消息")
+    data: Any = Field(None, description="响应数据，错误时为 null")
+    timestamp: int = Field(default_factory=lambda: int(time.time() * 1000),
+                           description="Unix 时间戳（毫秒）")

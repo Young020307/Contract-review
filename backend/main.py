@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
+from middleware import IntegrationApiResponseMiddleware
 from routers.templates import router as templates_router
 from routers.documents import router as documents_router
 from routers.review import router as review_router
@@ -23,18 +24,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(IntegrationApiResponseMiddleware)
 
 @app.on_event("startup")
 def startup():
     init_db()
 
-
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
 
-
 app.include_router(templates_router)
 app.include_router(documents_router)
 app.include_router(review_router)
+
 app.include_router(integration_router)
