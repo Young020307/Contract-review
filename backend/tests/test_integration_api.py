@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from fastapi.testclient import TestClient
 from main import app
 import database
+from utils import resolve_path
 
 database.init_db()
 client = TestClient(app)
@@ -12,6 +13,41 @@ client = TestClient(app)
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEST_DOCX = os.path.join(BACKEND_DIR, "uploads",
     "5b03a5999bc2404ba1df910034a4f29d_咨询服务标准合同-调整板V4.docx")
+
+_created_template_ids: list[int] = []
+_created_document_ids: list[int] = []
+
+
+def _cleanup_template(tid: int):
+    conn = database.get_connection()
+    try:
+        row = conn.execute("SELECT file_path FROM templates WHERE id = ?", (tid,)).fetchone()
+        if row:
+            file_path = resolve_path(row["file_path"])
+            conn.execute("DELETE FROM review_tasks WHERE template_id = ?", (tid,))
+            conn.execute("DELETE FROM documents WHERE template_id = ?", (tid,))
+            conn.execute("DELETE FROM annotations WHERE template_id = ?", (tid,))
+            conn.execute("DELETE FROM templates WHERE id = ?", (tid,))
+            conn.commit()
+            if os.path.exists(file_path):
+                os.remove(file_path)
+    finally:
+        conn.close()
+
+
+def _cleanup_document(did: int):
+    conn = database.get_connection()
+    try:
+        row = conn.execute("SELECT file_path FROM documents WHERE id = ?", (did,)).fetchone()
+        if row:
+            file_path = resolve_path(row["file_path"])
+            conn.execute("DELETE FROM review_tasks WHERE document_id = ?", (did,))
+            conn.execute("DELETE FROM documents WHERE id = ?", (did,))
+            conn.commit()
+            if os.path.exists(file_path):
+                os.remove(file_path)
+    finally:
+        conn.close()
 
 
 def _get_first_template_id():
@@ -41,6 +77,7 @@ def test_upload_template():
     data = resp.json()
     assert data["id"] > 0
     assert data["paragraph_count"] > 0
+    _cleanup_template(data["id"])
 
 
 def test_get_template():
@@ -73,13 +110,13 @@ def test_upload_document():
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] > 0
+    _cleanup_document(data["id"])
 
 
 def test_compare():
     tid = _get_first_template_id()
     if not tid:
         return
-    # Get a document for this template
     from database import get_connection
     conn = get_connection()
     doc = conn.execute(
@@ -140,6 +177,7 @@ def test_full_review():
     assert "validate" in data
     assert "diffs" in data["compare"]
     assert "results" in data["validate"]
+    _cleanup_document(data["document_id"])
 
 
 def test_full_review_bad_template():
