@@ -51,13 +51,14 @@ def run_validate(template_id: int, document_id: int) -> dict:
 | DELETE | `/templates/{id}` | 删除模板 |
 | POST | `/templates/{id}/annotations` | 保存标注 |
 | GET | `/templates/{id}/annotations` | 获取标注 |
+| GET | `/documents/proxy-template/{template_id}` | 代理模板文件下载 |
 | POST | `/documents/upload` | 上传待审文档 |
 | GET | `/documents/{id}` | 文档详情 |
 | POST | `/review/compare` | 比对 |
 | POST | `/review/validate` | 校验 |
 | POST | `/review/full` | 一站式审查（新增） |
 
-前 10 个端点与现有内部 API 逻辑完全一致，通过调用相同 Service 函数实现，零重复。
+前 11 个端点与现有内部 API 逻辑完全一致，通过调用相同 Service 函数实现，零重复。
 
 ### 一站式审查端点
 
