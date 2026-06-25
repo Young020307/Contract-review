@@ -50,9 +50,9 @@
         </el-form-item>
         <el-form-item label="审查流程">
           <el-radio-group v-model="reviewMode" :disabled="!uploadedDocs.length">
+            <el-radio-button value="both">全部执行</el-radio-button>
             <el-radio-button value="compare">篡改比对</el-radio-button>
             <el-radio-button value="validate">数据校验</el-radio-button>
-            <el-radio-button value="both">全部执行</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item>
@@ -125,7 +125,7 @@
           <template v-for="item in displayItems" :key="item.key">
             <div v-if="item.type === 'placeholder'" class="deleted-placeholder"
               :ref="(el: any) => setPlaceholderRef(item.templateIndex, el)">
-              <span class="placeholder-text">模板整段内容被删除</span>
+              <span class="placeholder-text">模板条款内容被删除</span>
             </div>
             <div v-else class="para-block"
               :ref="(el: any) => setParaRef(item.para.index, el)">
@@ -181,7 +181,7 @@
               <span class="vio-stamp" :class="'stamp-' + v.type">{{ stampLabel(v.type) }}</span>
               <div class="vio-body">
                 <template v-if="v.type === 'keyword'">
-                  <div class="vio-row act">检测到敏感词：<strong>{{ (v as any).keyword || v.actual_text }}</strong></div>
+                  <div class="vio-row act">检测到不合规字词：<strong>{{ (v as any).keyword || v.actual_text }}</strong></div>
                 </template>
                 <template v-else>
                   <div class="vio-row tpl">模板：{{ v.type === 'insert' ? '(空)' : truncate(v.template_text) }}</div>
@@ -232,7 +232,7 @@ const templates = ref<TemplateInfo[]>([])
 const selectedTemplateId = ref<number | null>(null)
 const uploadedDocs = ref<DocumentInfo[]>([])
 const activeDocIdx = ref(0)
-const reviewMode = ref<'compare' | 'validate' | 'both'>('compare')
+const reviewMode = ref<'compare' | 'validate' | 'both'>('both')
 const reviewing = ref(false)
 const showResult = ref(false)
 
