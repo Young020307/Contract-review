@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from database import get_connection
 from models import (
     AnnotationBatch, TemplateResponse, TemplateDetailResponse,
-    DocumentResponse, ParagraphInfo, ReviewRequest
+    DocumentResponse, ParagraphInfo
 )
 from services.parser import DocxParser
 from services.review_service import run_compare, run_validate
@@ -29,7 +29,7 @@ router = APIRouter(
     summary="上传合同模板",
     description="接收主系统上传的 .docx 模板文件，解析段落结构后入库，返回模板元信息。",
 )
-async def integration_upload_template(
+async def upload_template(
     file: UploadFile = File(..., description="模板文件 (.docx)")
 ):
     if not file.filename.endswith(".docx"):
@@ -62,9 +62,9 @@ async def integration_upload_template(
     "/templates",
     response_model=list[TemplateResponse],
     summary="获取模板列表",
-    description="返回所有已注册的合同模板，按 ID 排序。",
+    description="返回所有已注册的合同模板，按 ID 排序，供大系统下拉选择。",
 )
-def integration_list_templates():
+def list_templates():
     conn = get_connection()
     rows = conn.execute(
         "SELECT id, name, paragraph_count, created_at FROM templates ORDER BY id"
@@ -85,7 +85,7 @@ def integration_list_templates():
     summary="删除模板",
     description="删除指定模板及其关联的标注、文档和审查记录。",
 )
-def integration_delete_template(
+def delete_template(
     template_id: int = Path(..., description="模板 ID")
 ):
     conn = get_connection()
@@ -114,7 +114,7 @@ def integration_delete_template(
     summary="获取模板详情",
     description="返回指定模板的完整段落列表，包含下划线标注和表格单元格标记。",
 )
-def integration_get_template(
+def get_template(
     template_id: int = Path(..., description="模板 ID")
 ):
     conn = get_connection()
@@ -142,13 +142,17 @@ def integration_get_template(
         conn.close()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 标注管理
+# ══════════════════════════════════════════════════════════════════════════════
+
 @router.post(
     "/templates/{template_id}/annotations",
     summary="保存标注区域",
     description="为模板的指定段落保存固定区、可填充区和可变区的字符级标注。\n\n"
                 "每次调用会**全量替换**该模板的已有标注。",
 )
-def integration_save_annotations(
+def save_annotations(
     template_id: int = Path(..., description="模板 ID"),
     body: AnnotationBatch = ...,
 ):
@@ -181,7 +185,7 @@ def integration_save_annotations(
     summary="获取标注区域",
     description="返回指定模板的所有段落标注，按段落索引和起始字符排序。",
 )
-def integration_get_annotations(
+def get_annotations(
     template_id: int = Path(..., description="模板 ID")
 ):
     conn = get_connection()
@@ -215,7 +219,7 @@ def integration_get_annotations(
     summary="代理下载模板文件",
     description="以原始 .docx 格式返回模板文件，供主系统直接下载。",
 )
-async def integration_proxy_template_file(
+async def proxy_template_file(
     template_id: int = Path(..., description="模板 ID")
 ):
     conn = get_connection()
@@ -237,7 +241,7 @@ async def integration_proxy_template_file(
     summary="上传待审文档",
     description="上传待审查的 .docx 文档并关联到指定模板，解析段落结构后入库。",
 )
-async def integration_upload_document(
+async def upload_document(
     file: UploadFile = File(..., description="待审文档 (.docx)"),
     template_id: int = Query(..., description="关联的模板 ID"),
 ):
@@ -281,7 +285,7 @@ async def integration_upload_document(
     summary="获取文档详情",
     description="返回指定文档的完整段落列表和关联的模板 ID。",
 )
-def integration_get_document(
+def get_document(
     document_id: int = Path(..., description="文档 ID")
 ):
     conn = get_connection()
@@ -311,79 +315,29 @@ def integration_get_document(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 审查执行
+# 统一审查
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post(
-    "/review/compare",
-    summary="执行段落比对",
-    description="对模板和已上传文档执行逐段字符级 Diff，返回差异段列表和违规项。\n\n"
-                "填充区域内的差异会被自动忽略。",
+    "/review",
+    summary="执行合同审查",
+    description=(
+        "大系统一站式审查接口。接收模板编号、文件流和审查类型，完成审查后返回 JSON 结果。\n\n"
+        "**审查类型：**\n"
+        "- `1` — 段落比对：逐段 Diff，返回差异和违规项\n"
+        "- `2` — 规则校验：提取填充值，按标注规则逐字段校验\n"
+        "- `3` — 完整审查：比对 + 校验，聚合返回\n\n"
+        "**流程：** 上传文档 → 入库 → 审查 → 记录任务 → 返回结果"
+    ),
 )
-def integration_review_compare(
-    body: ReviewRequest = ...,
+async def review(
+    template_id: int = Form(..., description="模板 ID"),
+    review_type: int = Form(..., description="审查类型: 1=段落比对, 2=规则校验, 3=完整审查"),
+    file: UploadFile = File(..., description="待审文档 (.docx)"),
 ):
-    result = run_compare(body.template_id, body.document_id)
-    if result is None:
-        raise HTTPException(404, "模板或文件不存在")
+    if review_type not in (1, 2, 3):
+        raise HTTPException(400, "review_type 必须为 1（比对）、2（校验）或 3（完整审查）")
 
-    conn = get_connection()
-    try:
-        conn.execute(
-            "INSERT INTO review_tasks (template_id, document_id, task_type, result) "
-            "VALUES (?, ?, 'compare', ?)",
-            (body.template_id, body.document_id, json.dumps(result, ensure_ascii=False))
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    return result
-
-
-@router.post(
-    "/review/validate",
-    summary="执行规则校验",
-    description="提取文档填充值并按标注规则逐字段校验，包含：\n\n"
-                "- 必填 / 字数 / 字符类型检查\n"
-                "- Checkbox 勾选联动（勾选则关联字段必填）\n"
-                "- 跨字段一致性比对（match_fields）\n"
-                "- 大小写金额匹配（amount_match_field）\n"
-                "- 单选组互斥检查（radio_group）",
-)
-def integration_review_validate(
-    body: ReviewRequest = ...,
-):
-    result = run_validate(body.template_id, body.document_id)
-    if result is None:
-        raise HTTPException(404, "模板或文件不存在")
-
-    conn = get_connection()
-    try:
-        conn.execute(
-            "INSERT INTO review_tasks (template_id, document_id, task_type, result) "
-            "VALUES (?, ?, 'validate', ?)",
-            (body.template_id, body.document_id, json.dumps(result, ensure_ascii=False))
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    return result
-
-
-@router.post(
-    "/review/full",
-    summary="执行一站式审查",
-    description="接收主系统传来的文档，在一个请求内完成上传、比对和校验，聚合结果返回。\n\n"
-                "**流程：** 上传文档 → 入库 → 段落比对 → 规则校验 → 聚合返回\n\n"
-                "**注意事项：**\n"
-                "- 文档较大时（>5MB）可能耗时 3 秒以上\n"
-                "- 推荐文件大小限制在 10MB 以内\n"
-                "- 该接口为同步模式，结果会等待全部审查完成后才返回",
-)
-async def integration_review_full(
-    template_id: int = Form(..., description="主系统预先配置好的模板 ID"),
-    file: UploadFile = File(..., description="需要审查的原始 Word 文档 (.docx)"),
-):
     # Validate template exists
     conn = get_connection()
     try:
@@ -399,7 +353,7 @@ async def integration_review_full(
     if not file.filename or not file.filename.endswith(".docx"):
         raise HTTPException(400, "只支持 .docx 文件")
 
-    # Save uploaded document file (router-layer: file I/O)
+    # Save uploaded document
     filename = decode_filename(file.filename)
     safe_name = f"doc_{uuid.uuid4().hex}_{filename}"
     os.makedirs(DOC_UPLOAD_DIR, exist_ok=True)
@@ -408,7 +362,7 @@ async def integration_review_full(
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Create document record (router-layer: DB record creation)
+    # Create document record
     conn = get_connection()
     try:
         cur = conn.execute(
@@ -420,34 +374,33 @@ async def integration_review_full(
     finally:
         conn.close()
 
-    # Run review (service-layer: pure business logic)
-    compare_result = run_compare(template_id, document_id)
-    if compare_result is None:
-        raise HTTPException(500, "比对失败")
+    # Run review based on type
+    result: dict = {"document_id": document_id}
+    task_type_map = {1: "compare", 2: "validate", 3: "both"}
 
-    validate_result = run_validate(template_id, document_id)
-    if validate_result is None:
-        raise HTTPException(500, "校验失败")
+    if review_type in (1, 3):
+        compare_result = run_compare(template_id, document_id)
+        if compare_result is None:
+            raise HTTPException(500, "比对失败")
+        result["compare"] = compare_result
 
-    # Save review_task records (router-layer: audit trail)
+    if review_type in (2, 3):
+        validate_result = run_validate(template_id, document_id)
+        if validate_result is None:
+            raise HTTPException(500, "校验失败")
+        result["validate"] = validate_result
+
+    # Save review task record
     conn = get_connection()
     try:
         conn.execute(
             "INSERT INTO review_tasks (template_id, document_id, task_type, result) "
-            "VALUES (?, ?, 'compare', ?)",
-            (template_id, document_id, json.dumps(compare_result, ensure_ascii=False))
-        )
-        conn.execute(
-            "INSERT INTO review_tasks (template_id, document_id, task_type, result) "
-            "VALUES (?, ?, 'validate', ?)",
-            (template_id, document_id, json.dumps(validate_result, ensure_ascii=False))
+            "VALUES (?, ?, ?, ?)",
+            (template_id, document_id, task_type_map[review_type],
+             json.dumps(result, ensure_ascii=False))
         )
         conn.commit()
     finally:
         conn.close()
 
-    return {
-        "document_id": document_id,
-        "compare": compare_result,
-        "validate": validate_result
-    }
+    return result

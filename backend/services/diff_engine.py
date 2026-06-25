@@ -15,6 +15,165 @@ def _is_in_para_fillable(i1: int, i2: int, para_fillable: list[tuple[int, int]])
     return False
 
 
+def _diff_para_segments(tpl_text: str, doc_text: str,
+                        fillable_zones: list[tuple[int, int]],
+                        pi: int, tpl_go: int, doc_go: int):
+    """Per-paragraph diff using fixed-text anchors.
+
+    Splits the template at fillable-zone boundaries into fixed / fillable
+    segments, then locates each fixed segment in the document via positional
+    search.  Fillable content is always neutral; only missing / extra fixed
+    text produces violations.
+
+    Returns (diffs, violations) — both lists of dicts in the same shape as
+    the SequenceMatcher path.
+    """
+    diffs: list[dict] = []
+    violations: list[dict] = []
+
+    if not fillable_zones:
+        # No fillable zones — whole paragraph is fixed, use simple comparison
+        sm = difflib.SequenceMatcher(None, tpl_text, doc_text)
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag == "equal":
+                diffs.append({
+                    "type": "equal",
+                    "template_range": [tpl_go + i1, tpl_go + i2],
+                    "doc_range": [doc_go + j1, doc_go + j2],
+                    "value": tpl_text[i1:i2]
+                })
+                continue
+            t_template = tpl_text[i1:i2] if tag != "insert" else ""
+            t_actual = doc_text[j1:j2] if tag != "delete" else ""
+            diffs.append({
+                "type": tag,
+                "template_range": [tpl_go + i1, tpl_go + i2],
+                "doc_range": [doc_go + j1, doc_go + j2],
+                "value": t_actual if tag in ("insert", "replace") else t_template
+            })
+            violations.append({
+                "paragraph": pi,
+                "type": tag,
+                "template_text": t_template,
+                "actual_text": t_actual,
+                "template_range": [tpl_go + i1, tpl_go + i2],
+                "doc_range": [doc_go + j1, doc_go + j2]
+            })
+        return diffs, violations
+
+    # Build ordered segments: (is_fillable, tpl_start, tpl_end)
+    segments: list[tuple[bool, int, int]] = []
+    pos = 0
+    for fs, fe in sorted(fillable_zones):
+        fs = max(0, min(fs, len(tpl_text)))
+        fe = max(fs, min(fe, len(tpl_text)))
+        if pos < fs:
+            segments.append((False, pos, fs))   # fixed
+        if fs < fe or fs == fe:
+            segments.append((True, fs, fe))     # fillable
+        pos = fe
+    if pos < len(tpl_text):
+        segments.append((False, pos, len(tpl_text)))  # trailing fixed
+
+    # Walk segments: locate each fixed segment in doc by positional search
+    doc_pos = 0
+    for is_fillable, s, e in segments:
+        tpl_seg = tpl_text[s:e]
+        if is_fillable:
+            # Find the *next* fixed segment (if any) to bound this fillable
+            # Search forward for the first fixed segment after this one
+            next_fixed_text = ""
+            for is_f2, s2, e2 in segments:
+                if not is_f2 and s2 >= e:
+                    next_fixed_text = tpl_text[s2:e2]
+                    break
+            if next_fixed_text:
+                anchor = doc_text.find(next_fixed_text, doc_pos)
+                if anchor >= 0:
+                    doc_fill_end = anchor
+                else:
+                    doc_fill_end = doc_pos
+            else:
+                doc_fill_end = len(doc_text)
+
+            doc_fill_start = doc_pos
+            fill_val = doc_text[doc_fill_start:doc_fill_end] if doc_fill_end > doc_fill_start else ""
+            diffs.append({
+                "type": "equal",
+                "template_range": [tpl_go + s, tpl_go + e],
+                "doc_range": [doc_go + doc_fill_start, doc_go + doc_fill_end],
+                "value": fill_val
+            })
+            doc_pos = doc_fill_end
+        else:
+            # Fixed segment — find it in doc starting from doc_pos
+            idx = doc_text.find(tpl_seg, doc_pos)
+            if idx == -1:
+                # Fixed segment deleted
+                diffs.append({
+                    "type": "delete",
+                    "template_range": [tpl_go + s, tpl_go + e],
+                    "doc_range": [doc_go + doc_pos, doc_go + doc_pos],
+                    "value": tpl_seg
+                })
+                violations.append({
+                    "paragraph": pi,
+                    "type": "delete",
+                    "template_text": tpl_seg,
+                    "actual_text": "",
+                    "template_range": [tpl_go + s, tpl_go + e],
+                    "doc_range": [doc_go + doc_pos, doc_go + doc_pos]
+                })
+                # Don't advance doc_pos — segment not found
+            else:
+                if idx > doc_pos:
+                    # Extra content in doc before this fixed segment
+                    extra = doc_text[doc_pos:idx]
+                    diffs.append({
+                        "type": "insert",
+                        "template_range": [tpl_go + s, tpl_go + s],
+                        "doc_range": [doc_go + doc_pos, doc_go + idx],
+                        "value": extra
+                    })
+                    violations.append({
+                        "paragraph": pi,
+                        "type": "insert",
+                        "template_text": "",
+                        "actual_text": extra,
+                        "template_range": [tpl_go + s, tpl_go + s],
+                        "doc_range": [doc_go + doc_pos, doc_go + idx]
+                    })
+                diffs.append({
+                    "type": "equal",
+                    "template_range": [tpl_go + s, tpl_go + e],
+                    "doc_range": [doc_go + idx, doc_go + idx + len(tpl_seg)],
+                    "value": tpl_seg
+                })
+                doc_pos = idx + len(tpl_seg)
+
+    # Trailing extra content in doc not covered by template
+    if doc_pos < len(doc_text):
+        extra = doc_text[doc_pos:]
+        # Template position: last segment end, or 0 if no segments
+        last_tpl_pos = segments[-1][2] if segments else 0
+        diffs.append({
+            "type": "insert",
+            "template_range": [tpl_go + last_tpl_pos, tpl_go + last_tpl_pos],
+            "doc_range": [doc_go + doc_pos, doc_go + len(doc_text)],
+            "value": extra
+        })
+        violations.append({
+            "paragraph": pi,
+            "type": "insert",
+            "template_text": "",
+            "actual_text": extra,
+            "template_range": [tpl_go + last_tpl_pos, tpl_go + last_tpl_pos],
+            "doc_range": [doc_go + doc_pos, doc_go + len(doc_text)]
+        })
+
+    return diffs, violations
+
+
 class DiffEngine:
     @staticmethod
     def compare_aligned(tpl_paras: list[dict], doc_paras: list[dict],
@@ -57,45 +216,11 @@ class DiffEngine:
                 doc_go = doc_start[doc_i]
                 para_fillable = fillable_by_para.get(pi, [])
 
-                sm = difflib.SequenceMatcher(None, tpl_text, doc_text)
-                for tag, i1, i2, j1, j2 in sm.get_opcodes():
-                    if tag == "equal":
-                        diffs.append({
-                            "type": "equal",
-                            "template_range": [tpl_go + i1, tpl_go + i2],
-                            "doc_range": [doc_go + j1, doc_go + j2],
-                            "value": tpl_text[i1:i2]
-                        })
-                        continue
-
-                    if _is_in_para_fillable(i1, i2, para_fillable):
-                        # Neutralize: treat fillable-zone diffs as equal
-                        diffs.append({
-                            "type": "equal",
-                            "template_range": [tpl_go + i1, tpl_go + i2],
-                            "doc_range": [doc_go + j1, doc_go + j2],
-                            "value": doc_text[j1:j2] if tag != "delete" else tpl_text[i1:i2]
-                        })
-                        continue
-
-                    t_template = tpl_text[i1:i2] if tag != "insert" else ""
-                    t_actual = doc_text[j1:j2] if tag != "delete" else ""
-
-                    diffs.append({
-                        "type": tag,
-                        "template_range": [tpl_go + i1, tpl_go + i2],
-                        "doc_range": [doc_go + j1, doc_go + j2],
-                        "value": t_actual if tag in ("insert", "replace") else t_template
-                    })
-
-                    violations.append({
-                        "paragraph": pi,
-                        "type": tag,
-                        "template_text": t_template,
-                        "actual_text": t_actual,
-                        "template_range": [tpl_go + i1, tpl_go + i2],
-                        "doc_range": [doc_go + j1, doc_go + j2]
-                    })
+                para_diffs, para_violations = _diff_para_segments(
+                    tpl_text, doc_text, para_fillable, pi, tpl_go, doc_go
+                )
+                diffs.extend(para_diffs)
+                violations.extend(para_violations)
             else:
                 # Paragraph deleted entirely
                 doc_pos = _find_doc_position_after(pi, para_map, doc_start, doc_paras)

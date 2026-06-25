@@ -75,6 +75,13 @@ export interface CompareViolation {
   doc_range: [number, number]
 }
 
+export interface KeywordMatch {
+  keyword: string
+  paragraph: number
+  doc_paragraph: number
+  doc_range: [number, number]
+}
+
 export interface CompareResult {
   template_text: string
   document_text: string
@@ -83,6 +90,7 @@ export interface CompareResult {
   paragraph_mapping?: Record<number, number | null>
   inserted_paragraphs?: number[]
   absorbed?: Record<number, number[]>
+  keyword_matches?: KeywordMatch[]
 }
 
 export interface FieldResult {

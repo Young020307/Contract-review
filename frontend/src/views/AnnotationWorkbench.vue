@@ -93,12 +93,20 @@ onMounted(async () => {
         zone_type: a.zone_type as 'fixed' | 'fillable' | 'variable',
         rules: a.rules ? JSON.parse(a.rules) : undefined
       }))
+      // Paragraphs that have at least one saved annotation. If a paragraph has
+      // been fully cleared by the user (zero saved annotations), skip all
+      // auto-detected annotations for it — the user deliberately emptied it.
+      const savedParaIndices = new Set(existing.map((a: any) => a.paragraph_index))
       for (const d of detected) {
+        if (!savedParaIndices.has(d.paragraph_index)) continue
         if (existingKeys.has(`${d.paragraph_index}_${d.start_char}`)) continue
-        // Skip if overlaps with any saved annotation in the same paragraph
+        // Skip if touching or overlapping with any saved annotation.
+        // Uses <= (not <) so that adjacent/touching ranges are also caught,
+        // e.g. detected fillable [7,16] touching saved fixed [0,7], or
+        // detected zero-width fillable [n,n] touching saved fixed [0,n].
         const overlaps = merged.some(e =>
           e.paragraph_index === d.paragraph_index &&
-          e.start_char < d.end_char && d.start_char < e.end_char
+          e.start_char <= d.end_char && d.start_char <= e.end_char
         )
         if (!overlaps) {
           merged.push(d)
@@ -123,7 +131,9 @@ function autoAnnotateUnderscores(paragraphs: ParagraphInfo[]): AnnotationItem[] 
     const text = para.text
     const fillableRanges: [number, number][] = []
     // 1) underscore characters in text
-    const regex = /_+/g
+    // Match 2+ underscores only — a single _ in body text (e.g. "_10000元整")
+    // is example/demo content, not a fillable placeholder.
+    const regex = /_{2,}/g
     let match: RegExpExecArray | null
     while ((match = regex.exec(text)) !== null) {
       fillableRanges.push([match.index, match.index + match[0].length])

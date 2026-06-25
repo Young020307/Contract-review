@@ -1,9 +1,15 @@
+import difflib
 import json
 from database import get_connection
 from services.parser import DocxParser
 from services.diff_engine import DiffEngine
 from services.validator import RuleValidator
 from utils import resolve_path
+
+
+class TemplateMismatchError(Exception):
+    """Raised when the uploaded document does not match the selected template."""
+    pass
 
 
 def _build_fillable_by_para(ann_list: list[dict]) -> dict[int, list[tuple[int, int]]]:
@@ -24,6 +30,88 @@ def _parse_annotation_rules(rules) -> dict:
         except (json.JSONDecodeError, TypeError):
             return {}
     return rules or {}
+
+
+def _check_first_paragraph(tpl_paras: list[dict], doc_paras: list[dict]) -> None:
+    """Raise TemplateMismatchError if the first paragraphs (titles) differ too much."""
+    tpl_first = tpl_paras[0]["text"].strip() if tpl_paras else ""
+    doc_first = doc_paras[0]["text"].strip() if doc_paras else ""
+    if not tpl_first or not doc_first:
+        return
+    ratio = difflib.SequenceMatcher(None, tpl_first, doc_first).ratio()
+    if ratio < 0.5:
+        raise TemplateMismatchError("上传的文件与所选模板不匹配，请确认文件正确")
+
+
+KEYWORDS = ["保费收入"]
+
+
+def _scan_keywords(result: dict, doc_paras: list[dict],
+                   mapping: dict[int, int | None]) -> None:
+    """Scan document text for sensitive keywords and add to violations.
+
+    Keyword matches are prepended to the violations list so they appear
+    first in the review results. A ``keyword_matches`` list is added to
+    *result* for frontend highlighting.
+    """
+    doc_text: str = result.get("document_text", "")
+    if not doc_text:
+        result["keyword_matches"] = []
+        return
+
+    # Build doc-paragraph offset map
+    doc_go = 0
+    doc_offsets: list[tuple[int, int, int]] = []  # (index, start, end)
+    for dp in doc_paras:
+        p_end = doc_go + len(dp["text"]) + 1  # +1 for \n
+        doc_offsets.append((dp["index"], doc_go, p_end))
+        doc_go = p_end
+
+    # Reverse mapping: doc_idx → tpl_idx
+    rev_map: dict[int, int] = {}
+    for tpl_i, doc_i in mapping.items():
+        if doc_i is not None:
+            rev_map[doc_i] = tpl_i
+
+    keyword_matches: list[dict] = []
+
+    for kw in KEYWORDS:
+        start = 0
+        while True:
+            idx = doc_text.find(kw, start)
+            if idx == -1:
+                break
+
+            doc_pi = -1
+            for di, ds, de in doc_offsets:
+                if ds <= idx < de:
+                    doc_pi = di
+                    break
+
+            tpl_pi = rev_map.get(doc_pi, 0)
+
+            match_entry = {
+                "keyword": kw,
+                "paragraph": tpl_pi,
+                "doc_paragraph": doc_pi,
+                "doc_range": [idx, idx + len(kw)],
+            }
+            keyword_matches.append(match_entry)
+
+            # Prepend to violations — highest priority
+            result["violations"].insert(0, {
+                "paragraph": tpl_pi,
+                "type": "keyword",
+                "template_text": "",
+                "actual_text": kw,
+                "template_range": [0, 0],
+                "doc_range": [idx, idx + len(kw)],
+                "keyword": kw,
+            })
+
+            start = idx + 1
+
+    result["keyword_matches"] = keyword_matches
 
 
 def run_compare(template_id: int, document_id: int) -> dict | None:
@@ -54,6 +142,7 @@ def run_compare(template_id: int, document_id: int) -> dict | None:
 
         template_paras = DocxParser.parse(template_path)
         doc_paras = DocxParser.parse(doc_path)
+        _check_first_paragraph(template_paras, doc_paras)
         alignment = DocxParser.align_paragraphs(template_paras, doc_paras, ann_list)
 
         fillable_by_para = _build_fillable_by_para(ann_list)
@@ -69,6 +158,9 @@ def run_compare(template_id: int, document_id: int) -> dict | None:
         result["paragraph_mapping"] = alignment["mapping"]
         result["inserted_paragraphs"] = alignment["inserted"]
         result["absorbed"] = alignment.get("absorbed", {})
+
+        # ── Keyword scan ──
+        _scan_keywords(result, doc_paras, alignment["mapping"])
         return result
     finally:
         conn.close()
@@ -104,6 +196,10 @@ def run_validate(template_id: int, document_id: int) -> dict | None:
         ).fetchall()
         ann_list = [dict(a) for a in annotations]
 
+        doc_paras_list = DocxParser.parse(doc_path)
+        template_paras_list = DocxParser.parse(template_path)
+        _check_first_paragraph(template_paras_list, doc_paras_list)
+
         values = DocxParser.extract_fillable_values(template_path, doc_path, ann_list)
         checkbox_statuses = DocxParser.detect_checkbox_status(
             template_path, doc_path, ann_list
@@ -111,8 +207,6 @@ def run_validate(template_id: int, document_id: int) -> dict | None:
         values.update(checkbox_statuses)
         result = RuleValidator.validate(values, ann_list)
 
-        doc_paras_list = DocxParser.parse(doc_path)
-        template_paras_list = DocxParser.parse(template_path)
         alignment = DocxParser.align_paragraphs(template_paras_list, doc_paras_list, ann_list)
         para_map = alignment["mapping"]
         absorbed_val = alignment.get("absorbed", {})

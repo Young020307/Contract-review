@@ -176,11 +176,17 @@
               <p>未发现篡改</p>
             </div>
             <div v-for="(v, i) in compareResult.violations" :key="'v' + i"
-              class="vio-item" :ref="(el: any) => setVioRef(i, el)" @click="scrollToViolation(i)">
+              class="vio-item" :class="{ 'vio-keyword': v.type === 'keyword' }"
+              :ref="(el: any) => setVioRef(i, el)" @click="scrollToViolation(i)">
               <span class="vio-stamp" :class="'stamp-' + v.type">{{ stampLabel(v.type) }}</span>
               <div class="vio-body">
-                <div class="vio-row tpl">模板：{{ v.type === 'insert' ? '(空)' : truncate(v.template_text) }}</div>
-                <div class="vio-row act">实际：{{ v.type === 'delete' ? '(空)' : truncate(v.actual_text) }}</div>
+                <template v-if="v.type === 'keyword'">
+                  <div class="vio-row act">检测到敏感词：<strong>{{ (v as any).keyword || v.actual_text }}</strong></div>
+                </template>
+                <template v-else>
+                  <div class="vio-row tpl">模板：{{ v.type === 'insert' ? '(空)' : truncate(v.template_text) }}</div>
+                  <div class="vio-row act">实际：{{ v.type === 'delete' ? '(空)' : truncate(v.actual_text) }}</div>
+                </template>
               </div>
             </div>
           </div>
@@ -278,19 +284,25 @@ async function startReview() {
   if (!selectedTemplateId.value || !uploadedDocs.value.length) return
   reviewing.value = true
   const tid = selectedTemplateId.value
-  for (const doc of uploadedDocs.value) {
-    const did = doc.id
-    const entry: { compare: CompareResult | null; validate: ValidateResult | null } = { compare: null, validate: null }
-    if (reviewMode.value === 'compare' || reviewMode.value === 'both') {
-      entry.compare = await reviewCompare(tid, did)
+  try {
+    for (const doc of uploadedDocs.value) {
+      const did = doc.id
+      const entry: { compare: CompareResult | null; validate: ValidateResult | null } = { compare: null, validate: null }
+      if (reviewMode.value === 'compare' || reviewMode.value === 'both') {
+        entry.compare = await reviewCompare(tid, did)
+      }
+      if (reviewMode.value === 'validate' || reviewMode.value === 'both') {
+        entry.validate = await reviewValidate(tid, did)
+      }
+      docResults[did] = entry
     }
-    if (reviewMode.value === 'validate' || reviewMode.value === 'both') {
-      entry.validate = await reviewValidate(tid, did)
-    }
-    docResults[did] = entry
+    showResult.value = true
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '审查失败，请重试'
+    ElMessage.error(msg)
+  } finally {
+    reviewing.value = false
   }
-  showResult.value = true
-  reviewing.value = false
 }
 
 const passCount = computed(() => {
@@ -334,9 +346,33 @@ const renderedParagraphs = computed<RenderedPara[]>(() => {
   const globalOffsets: number[] = []
   let offset = 0
   for (const p of paras) { globalOffsets.push(offset); offset += p.text.length + 1 }
+
+  // Build keyword range map by doc paragraph
+  const keywordRanges: Record<number, [number, number][]> = {}
+  for (const km of compareResult.value?.keyword_matches ?? []) {
+    let goff = 0
+    for (const p of paras) {
+      const pend = goff + p.text.length
+      if (km.doc_range[0] >= goff && km.doc_range[0] < pend) {
+        const localStart = km.doc_range[0] - goff
+        const localEnd = km.doc_range[1] - goff
+        if (!keywordRanges[p.index]) keywordRanges[p.index] = []
+        keywordRanges[p.index].push([localStart, localEnd])
+        break
+      }
+      goff = pend + 1
+    }
+  }
+
   return paras.map((p, pi) => {
     const fields = fieldMap[p.index] || []
-    return { index: p.index, segments: buildUnifiedSegs(p.text, globalOffsets[pi], hasCompare ? diffs : [], hasValidate ? fields : []) }
+    const segs = buildUnifiedSegs(p.text, globalOffsets[pi], hasCompare ? diffs : [], hasValidate ? fields : [])
+    // Split segments at keyword boundaries
+    const kwRanges = keywordRanges[p.index]
+    if (kwRanges && kwRanges.length) {
+      return { index: p.index, segments: splitByKeywords(segs, kwRanges, globalOffsets[pi]) }
+    }
+    return { index: p.index, segments: segs }
   })
 })
 
@@ -472,6 +508,40 @@ function splitByDiffs(text: string, paraGlobalStart: number, diffs: DiffSegment[
   return segs
 }
 
+function splitByKeywords(segs: DocSeg[], kwRanges: [number, number][], paraGlobalStart: number): DocSeg[] {
+  const sorted = [...kwRanges].sort((a, b) => a[0] - b[0])
+  const result: DocSeg[] = []
+  let paraPos = 0
+  for (const seg of segs) {
+    const segStart = paraPos
+    const segEnd = paraPos + seg.text.length
+    const overlaps = sorted.filter(([s, e]) => s < segEnd && e > segStart)
+    if (!overlaps.length) {
+      result.push(seg)
+      paraPos = segEnd
+      continue
+    }
+    let pos = segStart
+    for (const [ks, ke] of overlaps) {
+      const absStart = Math.max(pos, ks)
+      const absEnd = Math.min(segEnd, ke)
+      if (absStart > pos) {
+        result.push({ text: seg.text.slice(pos - segStart, absStart - segStart), type: seg.type, fieldIdx: seg.fieldIdx, vioDocStart: seg.vioDocStart })
+      }
+      if (absEnd > absStart) {
+        // Use keyword's global doc position for click-to-scroll linking
+        result.push({ text: seg.text.slice(absStart - segStart, absEnd - segStart), type: 'keyword-hit', vioDocStart: paraGlobalStart + ks })
+      }
+      pos = absEnd
+    }
+    if (pos < segEnd) {
+      result.push({ text: seg.text.slice(pos - segStart), type: seg.type, fieldIdx: seg.fieldIdx, vioDocStart: seg.vioDocStart })
+    }
+    paraPos = segEnd
+  }
+  return result
+}
+
 function segClass(type: string): Record<string, boolean> {
   const map: Record<string, Record<string, boolean>> = {
     'diff-insert': { 'seg-insert': true },
@@ -479,12 +549,13 @@ function segClass(type: string): Record<string, boolean> {
     'diff-delete': { 'seg-delete': true },
     'field-pass': { 'field-pass': true },
     'field-fail': { 'field-fail': true },
+    'keyword-hit': { 'seg-keyword': true },
   }
   return map[type] || {}
 }
 
 function stampLabel(type: string): string {
-  const map: Record<string, string> = { insert: '新增', delete: '删除', replace: '替换' }
+  const map: Record<string, string> = { insert: '新增', delete: '删除', replace: '替换', keyword: '⚠ 敏感词' }
   return map[type] || '变更'
 }
 
@@ -946,6 +1017,31 @@ function onSegmentClick(seg: DocSeg, _paraIndex: number) {
   padding: 2px 4px;
   border-radius: var(--radius-sm);
   border-bottom: 2px solid var(--amber);
+}
+
+/* Keyword highlight */
+.seg-keyword {
+  background: var(--danger);
+  color: var(--paper-white);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+}
+.vio-keyword {
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+}
+.vio-keyword .vio-stamp {
+  background: var(--danger);
+  color: var(--paper-white);
+  border-color: var(--danger);
+}
+.stamp-keyword {
+  background: var(--danger);
+  color: var(--paper-white);
+  border-color: var(--danger);
 }
 
 /* Flash animations */

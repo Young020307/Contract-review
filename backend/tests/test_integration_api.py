@@ -56,6 +56,8 @@ def _get_first_template_id():
     return items[0]["id"] if items else None
 
 
+# ── Template tests ──
+
 def test_list_templates():
     resp = client.get("/api/integration/v1/templates")
     assert resp.status_code == 200
@@ -89,6 +91,8 @@ def test_get_template():
     assert resp.json()["id"] == tid
 
 
+# ── Annotation tests ──
+
 def test_list_annotations():
     tid = _get_first_template_id()
     if not tid:
@@ -97,6 +101,8 @@ def test_list_annotations():
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
+
+# ── Document tests ──
 
 def test_upload_document():
     tid = _get_first_template_id()
@@ -113,92 +119,114 @@ def test_upload_document():
     _cleanup_document(data["id"])
 
 
-def test_compare():
-    tid = _get_first_template_id()
-    if not tid:
-        return
-    from database import get_connection
-    conn = get_connection()
-    doc = conn.execute(
-        "SELECT id FROM documents WHERE template_id = ? ORDER BY id DESC LIMIT 1",
-        (tid,)
-    ).fetchone()
-    conn.close()
-    if not doc:
-        return
-    resp = client.post(
-        "/api/integration/v1/review/compare",
-        json={"template_id": tid, "document_id": doc["id"]}
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "diffs" in data
-    assert "violations" in data
+# ── Unified review endpoint tests ──
 
-
-def test_validate():
-    tid = _get_first_template_id()
-    if not tid:
-        return
-    from database import get_connection
-    conn = get_connection()
-    doc = conn.execute(
-        "SELECT id FROM documents WHERE template_id = ? ORDER BY id DESC LIMIT 1",
-        (tid,)
-    ).fetchone()
-    conn.close()
-    if not doc:
-        return
-    resp = client.post(
-        "/api/integration/v1/review/validate",
-        json={"template_id": tid, "document_id": doc["id"]}
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "results" in data
-
-
-def test_full_review():
-    """End-to-end: upload docx + compare + validate in one call."""
-    tid = _get_first_template_id()
-    if not tid:
-        return
+def _do_review(review_type: int):
+    """Helper: create a template from TEST_DOCX, upload same file as document, run review."""
+    # Upload as template first to ensure title match
     with open(TEST_DOCX, "rb") as f:
         resp = client.post(
-            "/api/integration/v1/review/full",
-            data={"template_id": str(tid)},
-            files={"file": ("full_test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+            "/api/integration/v1/templates/upload",
+            files={"file": ("test_tpl.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
         )
+    if resp.status_code != 200:
+        return None, None
+    tid = resp.json()["id"]
+
+    # Upload same file as document against the newly created template
+    with open(TEST_DOCX, "rb") as f:
+        resp = client.post(
+            "/api/integration/v1/review",
+            data={"template_id": str(tid), "review_type": str(review_type)},
+            files={"file": ("review_test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+        )
+    return resp, tid
+
+
+def test_review_compare():
+    """review_type=1: compare only."""
+    resp, tid = _do_review(1)
+    if resp is None:
+        return
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "document_id" in data
+    assert data["document_id"] > 0
+    assert "compare" in data
+    assert "diffs" in data["compare"]
+    assert "violations" in data["compare"]
+    assert "validate" not in data
+    _cleanup_template(tid)
+    _cleanup_document(data["document_id"])
+
+
+def test_review_validate():
+    """review_type=2: validate only."""
+    resp, tid = _do_review(2)
+    if resp is None:
+        return
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "document_id" in data
+    assert data["document_id"] > 0
+    assert "validate" in data
+    assert "results" in data["validate"]
+    assert "compare" not in data
+    _cleanup_template(tid)
+    _cleanup_document(data["document_id"])
+
+
+def test_review_full():
+    """review_type=3: compare + validate."""
+    resp, tid = _do_review(3)
+    if resp is None:
+        return
     assert resp.status_code == 200
     data = resp.json()
     assert "document_id" in data
     assert data["document_id"] > 0
     assert "compare" in data
     assert "validate" in data
+    _cleanup_template(tid)
+    _cleanup_document(data["document_id"])
     assert "diffs" in data["compare"]
     assert "results" in data["validate"]
     _cleanup_document(data["document_id"])
 
 
-def test_full_review_bad_template():
+def test_review_bad_template():
     """Non-existent template should return 404."""
     with open(TEST_DOCX, "rb") as f:
         resp = client.post(
-            "/api/integration/v1/review/full",
-            data={"template_id": "99999"},
+            "/api/integration/v1/review",
+            data={"template_id": "99999", "review_type": "1"},
             files={"file": ("test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
         )
     assert resp.status_code == 404
 
 
-def test_full_review_bad_file():
+def test_review_bad_file():
     """Non-docx file should return 400."""
     tid = _get_first_template_id()
     if not tid:
         return
     resp = client.post(
-        "/api/integration/v1/review/full",
-        data={"template_id": str(tid)},
+        "/api/integration/v1/review",
+        data={"template_id": str(tid), "review_type": "1"},
         files={"file": ("test.txt", b"hello world", "text/plain")}
     )
+    assert resp.status_code == 400
+
+
+def test_review_bad_type():
+    """Invalid review_type should return 400."""
+    tid = _get_first_template_id()
+    if not tid:
+        return
+    with open(TEST_DOCX, "rb") as f:
+        resp = client.post(
+            "/api/integration/v1/review",
+            data={"template_id": str(tid), "review_type": "99"},
+            files={"file": ("test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+        )
     assert resp.status_code == 400

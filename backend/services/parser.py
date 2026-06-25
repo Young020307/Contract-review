@@ -303,7 +303,7 @@ class DocxParser:
                     doc_start = match.start(i + 1) if i < len(groups) else 0
                     doc_end = match.end(i + 1) if i < len(groups) else 0
                     values[key] = {
-                        "value": raw.strip().strip("_").strip(),
+                        "value": raw.strip(" _"),
                         "doc_start": doc_start,
                         "doc_end": doc_end
                     }
@@ -312,7 +312,7 @@ class DocxParser:
                     tpl_start = max(0, min(ann.get("start_char", 0), len(doc_text)))
                     tpl_end = max(tpl_start, min(ann.get("end_char", len(doc_text)), len(doc_text)))
                     key = f"{pi}_{tpl_start}"
-                    val = doc_text[tpl_start:tpl_end].strip().strip("_").strip()
+                    val = doc_text[tpl_start:tpl_end].strip(" _")
                     values[key] = {
                         "value": val,
                         "doc_start": tpl_start,
