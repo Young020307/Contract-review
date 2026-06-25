@@ -4,6 +4,7 @@ from database import init_db
 from routers.templates import router as templates_router
 from routers.documents import router as documents_router
 from routers.review import router as review_router
+from routers.integration import router as integration_router
 
 app = FastAPI(title="合同智能审查系统 Demo")
 
@@ -28,3 +29,4 @@ def health():
 app.include_router(templates_router)
 app.include_router(documents_router)
 app.include_router(review_router)
+app.include_router(integration_router)
