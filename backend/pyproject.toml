@@ -8,9 +8,15 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "python-multipart>=0.0.19",
     "python-docx>=1.1",
+    "httpx2>=2.4.0",
 ]
 
 [project.scripts]
 dev = "uvicorn main:app --host 127.0.0.1 --port 8000 --reload"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
 
 
