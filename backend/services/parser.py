@@ -124,7 +124,7 @@ class DocxParser:
                             break
                 if found is None:
                     from difflib import SequenceMatcher
-                    best_j, best_r = None, 0.95
+                    best_j, best_r = None, 0.8
                     for j, dt in enumerate(doc_texts):
                         if j in used_docs:
                             continue
@@ -188,7 +188,40 @@ class DocxParser:
         inserted = sorted(
             [j for j in range(len(doc_texts)) if j not in used_docs])
 
-        return {"mapping": mapping, "inserted": inserted}
+        # ── Pass 3: absorb adjacent inserted paragraphs into fillable template paragraphs ──
+        fillable_coverage: dict[int, float] = {}
+        for p in tpl_paras:
+            pi = p["index"]
+            text = p["text"]
+            anns = ann_by_para.get(pi, [])
+            if not anns or not text:
+                fillable_coverage[pi] = 0.0
+                continue
+            total_fillable = sum(
+                max(0, min(a["end_char"], len(text)) - max(0, a["start_char"]))
+                for a in anns
+            )
+            fillable_coverage[pi] = total_fillable / len(text)
+
+        rev_map: dict[int, int] = {}
+        for tpl_idx, doc_idx in mapping.items():
+            if doc_idx is not None:
+                rev_map[doc_idx] = tpl_idx
+
+        absorbed: dict[int, list[int]] = {}
+        still_inserted: list[int] = []
+        for doc_i in inserted:
+            preceding_tpl = None
+            for d in range(doc_i - 1, -1, -1):
+                if d in rev_map:
+                    preceding_tpl = rev_map[d]
+                    break
+            if preceding_tpl is not None and fillable_coverage.get(preceding_tpl, 0) >= 0.98:
+                absorbed.setdefault(preceding_tpl, []).append(doc_i)
+            else:
+                still_inserted.append(doc_i)
+
+        return {"mapping": mapping, "inserted": still_inserted, "absorbed": absorbed}
 
     @staticmethod
     def extract_fillable_values(template_file_path: str, doc_file_path: str, annotations: list[dict]) -> dict:
@@ -211,6 +244,7 @@ class DocxParser:
         doc_paras = DocxParser.parse(doc_file_path)
         alignment = DocxParser.align_paragraphs(tpl_paras, doc_paras, annotations)
         para_map = alignment["mapping"]
+        absorbed = alignment.get("absorbed", {})
 
         values = {}
 
@@ -230,6 +264,11 @@ class DocxParser:
 
             tpl_text = tpl_texts[pi]
             doc_text = doc_texts[doc_pi]
+            # Merge absorbed paragraph text for fillable fields that span multiple doc paragraphs
+            extra_paras = absorbed.get(pi, [])
+            if extra_paras:
+                merged = [doc_text] + [doc_texts[j] for j in sorted(extra_paras) if j < len(doc_texts)]
+                doc_text = "\n".join(merged)
             if not tpl_text:
                 continue
 
@@ -254,7 +293,8 @@ class DocxParser:
             escaped = [re.escape(p) for p in fixed_parts]
             pattern = "^" + "(.*?)".join(escaped) + "$"
 
-            match = re.search(pattern, doc_text)
+            flags = re.DOTALL if extra_paras else 0
+            match = re.search(pattern, doc_text, flags)
             if match:
                 groups = match.groups()
                 for i, ann in enumerate(anns_sorted):
@@ -263,7 +303,7 @@ class DocxParser:
                     doc_start = match.start(i + 1) if i < len(groups) else 0
                     doc_end = match.end(i + 1) if i < len(groups) else 0
                     values[key] = {
-                        "value": raw.strip().strip("_"),
+                        "value": raw.strip().strip("_").strip(),
                         "doc_start": doc_start,
                         "doc_end": doc_end
                     }
@@ -272,7 +312,7 @@ class DocxParser:
                     tpl_start = max(0, min(ann.get("start_char", 0), len(doc_text)))
                     tpl_end = max(tpl_start, min(ann.get("end_char", len(doc_text)), len(doc_text)))
                     key = f"{pi}_{tpl_start}"
-                    val = doc_text[tpl_start:tpl_end].strip().strip("_")
+                    val = doc_text[tpl_start:tpl_end].strip().strip("_").strip()
                     values[key] = {
                         "value": val,
                         "doc_start": tpl_start,

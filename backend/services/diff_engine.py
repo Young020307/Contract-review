@@ -19,7 +19,8 @@ class DiffEngine:
     @staticmethod
     def compare_aligned(tpl_paras: list[dict], doc_paras: list[dict],
                         para_map: dict[int, int | None], inserted: list[int],
-                        fillable_by_para: dict[int, list[tuple[int, int]]]) -> dict:
+                        fillable_by_para: dict[int, list[tuple[int, int]]],
+                        absorbed: dict[int, list[int]] | None = None) -> dict:
         """Per-paragraph diff using paragraph alignment.
 
         Diffs each matched paragraph pair independently so that paragraph
@@ -113,6 +114,24 @@ class DiffEngine:
                     "doc_range": [doc_pos, doc_pos]
                 })
 
+        # Absorbed paragraphs: fillable content spread across extra doc paragraphs.
+        # Treat as equal (no violation) — they belong to the fillable zone of their
+        # parent template paragraph.
+        absorbed_set: set[int] = set()
+        if absorbed:
+            for doc_indices in absorbed.values():
+                absorbed_set.update(doc_indices)
+            for doc_i in sorted(absorbed_set):
+                doc_text = doc_paras[doc_i]["text"]
+                doc_go = doc_start[doc_i]
+                tpl_pos = _find_tpl_position_before(doc_i, para_map, tpl_start, tpl_paras)
+                diffs.append({
+                    "type": "equal",
+                    "template_range": [tpl_pos, tpl_pos],
+                    "doc_range": [doc_go, doc_go + len(doc_text)],
+                    "value": doc_text
+                })
+
         # Inserted paragraphs
         for doc_i in sorted(inserted):
             doc_text = doc_paras[doc_i]["text"]
@@ -133,7 +152,103 @@ class DiffEngine:
                 "doc_range": [doc_go, doc_go + len(doc_text)]
             })
 
-        return {"diffs": diffs, "violations": violations}
+        return {
+            "diffs": _merge_adjacent_diffs(diffs),
+            "violations": _merge_adjacent_violations(violations)
+        }
+
+
+def _merge_adjacent_diffs(diffs: list[dict]) -> list[dict]:
+    """Merge adjacent delete+insert diff entries (possibly separated by equal)
+    into a single replace when their template positions are close."""
+    if not diffs:
+        return []
+    sorted_d = sorted(diffs, key=lambda d: d["template_range"][0])
+    merged: list[dict] = []
+    i = 0
+    while i < len(sorted_d):
+        a = sorted_d[i]
+        if a["type"] not in ("delete", "insert"):
+            merged.append(a)
+            i += 1
+            continue
+        # Scan forward (skip equal) to find a matching insert/delete
+        found = False
+        for j in range(i + 1, len(sorted_d)):
+            b = sorted_d[j]
+            if b["type"] == "equal":
+                continue
+            types = {a["type"], b["type"]}
+            if types != {"delete", "insert"}:
+                break
+            gap = abs(a["template_range"][1] - b["template_range"][0])
+            if gap > 2:
+                break
+            # Merge: drain intermediate entries, emit replace
+            d = a if a["type"] == "delete" else b
+            ins = b if b["type"] == "insert" else a
+            merged.append({
+                "type": "replace",
+                "template_range": d["template_range"],
+                "doc_range": ins["doc_range"],
+                "value": ins["value"],
+            })
+            # Copy over any equal entries between a and b
+            for k in range(i + 1, j):
+                merged.append(sorted_d[k])
+            i = j + 1
+            found = True
+            break
+        if not found:
+            merged.append(a)
+            i += 1
+    return merged
+
+
+def _merge_adjacent_violations(violations: list[dict]) -> list[dict]:
+    """Merge adjacent delete+insert pairs into a single replace violation.
+
+    SequenceMatcher sometimes represents a substitution as separate delete and
+    insert operations when the edit distance is small (e.g. "45" → "50").
+    This pass merges them back into a single "replace" for cleaner UI display.
+    """
+    if not violations:
+        return []
+    # Sort by paragraph, then by template_range start
+    sorted_v = sorted(violations, key=lambda v: (v["paragraph"], v["template_range"][0]))
+    merged: list[dict] = []
+    i = 0
+    while i < len(sorted_v):
+        a = sorted_v[i]
+        if i + 1 >= len(sorted_v) or a["paragraph"] != sorted_v[i + 1]["paragraph"]:
+            merged.append(a)
+            i += 1
+            continue
+        b = sorted_v[i + 1]
+        # Look for adjacent delete+insert or insert+delete in same paragraph
+        types = {a["type"], b["type"]}
+        if types != {"delete", "insert"}:
+            merged.append(a)
+            i += 1
+            continue
+        gap = abs(a["template_range"][1] - b["template_range"][0])
+        if gap > 2:
+            merged.append(a)
+            i += 1
+            continue
+        # Merge: pick delete as template_text, insert as actual_text
+        d = a if a["type"] == "delete" else b
+        ins = b if b["type"] == "insert" else a
+        merged.append({
+            "paragraph": d["paragraph"],
+            "type": "replace",
+            "template_text": d["template_text"],
+            "actual_text": ins["actual_text"],
+            "template_range": d["template_range"],
+            "doc_range": ins["doc_range"],
+        })
+        i += 2
+    return merged
 
 
 def _find_doc_position_after(tpl_idx: int, para_map: dict, doc_start: dict,

@@ -61,12 +61,14 @@ def run_compare(template_id: int, document_id: int) -> dict | None:
         result = DiffEngine.compare_aligned(
             template_paras, doc_paras,
             alignment["mapping"], alignment["inserted"],
-            fillable_by_para
+            fillable_by_para,
+            absorbed=alignment.get("absorbed")
         )
         result["template_text"] = DocxParser.extract_full_text(template_path)
         result["document_text"] = DocxParser.extract_full_text(doc_path)
         result["paragraph_mapping"] = alignment["mapping"]
         result["inserted_paragraphs"] = alignment["inserted"]
+        result["absorbed"] = alignment.get("absorbed", {})
         return result
     finally:
         conn.close()
@@ -113,12 +115,18 @@ def run_validate(template_id: int, document_id: int) -> dict | None:
         template_paras_list = DocxParser.parse(template_path)
         alignment = DocxParser.align_paragraphs(template_paras_list, doc_paras_list, ann_list)
         para_map = alignment["mapping"]
+        absorbed_val = alignment.get("absorbed", {})
         doc_paras = {p["index"]: p["text"] for p in doc_paras_list}
         template_paras = {p["index"]: p["text"] for p in template_paras_list}
         for r in result["results"]:
             doc_pi = para_map.get(r["paragraph"])
             if doc_pi is not None:
-                r["paragraph_text"] = doc_paras.get(doc_pi, "")
+                text = doc_paras.get(doc_pi, "")
+                extra = absorbed_val.get(r["paragraph"], [])
+                if extra:
+                    merged = [text] + [doc_paras[j] for j in sorted(extra) if j in doc_paras]
+                    text = "\n".join(merged)
+                r["paragraph_text"] = text
             else:
                 r["paragraph_text"] = ""
             r["template_paragraph_text"] = template_paras.get(r["paragraph"], "")
@@ -245,6 +253,7 @@ def run_validate(template_id: int, document_id: int) -> dict | None:
         ]
         result["paragraph_mapping"] = alignment["mapping"]
         result["inserted_paragraphs"] = alignment["inserted"]
+        result["absorbed"] = alignment.get("absorbed", {})
         return result
     finally:
         conn.close()

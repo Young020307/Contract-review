@@ -350,6 +350,13 @@ const displayItems = computed(() => {
   for (const [tplStr, doc] of Object.entries(mapping)) {
     if (doc !== null) revMap[doc as number] = Number(tplStr)
   }
+  // Include absorbed paragraphs in reverse mapping
+  const absorbedMap = validateResult.value?.absorbed ?? compareResult.value?.absorbed ?? {}
+  for (const [tplStr, docIndices] of Object.entries(absorbedMap)) {
+    for (const di of docIndices as number[]) {
+      revMap[di] = Number(tplStr)
+    }
+  }
   const items: Array<
     { key: string; type: 'para'; para: typeof renderedParagraphs.value[0] }
     | { key: string; type: 'placeholder'; templateIndex: number }
@@ -388,11 +395,17 @@ function buildFieldMap(): Record<number, FieldResult[]> {
   const map: Record<number, FieldResult[]> = {}
   if (!validateResult.value) return map
   const mapping = validateResult.value.paragraph_mapping ?? {}
+  const absorbed = validateResult.value.absorbed ?? {}
   for (const r of validateResult.value.results) {
     const docPi = mapping[r.paragraph]
     if (docPi == null) continue  // paragraph deleted — skip
     if (!map[docPi]) map[docPi] = []
     map[docPi].push(r)
+    // Also map to absorbed paragraphs
+    for (const absDoc of (absorbed[r.paragraph] ?? [])) {
+      if (!map[absDoc]) map[absDoc] = []
+      map[absDoc].push(r)
+    }
   }
   return map
 }

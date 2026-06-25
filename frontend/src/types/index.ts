@@ -82,6 +82,7 @@ export interface CompareResult {
   violations: CompareViolation[]
   paragraph_mapping?: Record<number, number | null>
   inserted_paragraphs?: number[]
+  absorbed?: Record<number, number[]>
 }
 
 export interface FieldResult {
@@ -103,4 +104,5 @@ export interface ValidateResult {
   template_paragraphs: ParagraphInfo[]
   paragraph_mapping?: Record<number, number | null>
   inserted_paragraphs?: number[]
+  absorbed?: Record<number, number[]>
 }
