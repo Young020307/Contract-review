@@ -6,7 +6,15 @@ from routers.documents import router as documents_router
 from routers.review import router as review_router
 from routers.integration import router as integration_router
 
-app = FastAPI(title="合同智能审查系统 Demo")
+app = FastAPI(
+    title="审查模块统一集成 API (Review Gateway)",
+    description="提供给主系统的黑盒调用接口，包含模板管理、文档上传、比对校验及一站式审查功能。",
+    version="1.0.0",
+    contact={
+        "name": "合同审查团队",
+        "email": "dev@example.com",
+    },
+)
 
 app.add_middleware(
     CORSMiddleware,

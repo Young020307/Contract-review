@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Path, Query
 from fastapi.responses import FileResponse
 from database import get_connection
 from models import (
@@ -13,13 +13,25 @@ from services.parser import DocxParser
 from services.review_service import run_compare, run_validate
 from utils import UPLOAD_DIR, DOC_UPLOAD_DIR, resolve_path, decode_filename
 
-router = APIRouter(prefix="/api/integration/v1", tags=["integration"])
+router = APIRouter(
+    prefix="/api/integration/v1",
+    tags=["统一集成 API"],
+)
 
 
-# ── Templates ──
+# ══════════════════════════════════════════════════════════════════════════════
+# 模板管理
+# ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/templates/upload", response_model=TemplateResponse)
-async def integration_upload_template(file: UploadFile = File(...)):
+@router.post(
+    "/templates/upload",
+    response_model=TemplateResponse,
+    summary="上传合同模板",
+    description="接收主系统上传的 .docx 模板文件，解析段落结构后入库，返回模板元信息。",
+)
+async def integration_upload_template(
+    file: UploadFile = File(..., description="模板文件 (.docx)")
+):
     if not file.filename.endswith(".docx"):
         raise HTTPException(400, "只支持 .docx 文件")
     filename = decode_filename(file.filename)
@@ -46,7 +58,12 @@ async def integration_upload_template(file: UploadFile = File(...)):
     )
 
 
-@router.get("/templates", response_model=list[TemplateResponse])
+@router.get(
+    "/templates",
+    response_model=list[TemplateResponse],
+    summary="获取模板列表",
+    description="返回所有已注册的合同模板，按 ID 排序。",
+)
 def integration_list_templates():
     conn = get_connection()
     rows = conn.execute(
@@ -63,8 +80,14 @@ def integration_list_templates():
     ]
 
 
-@router.delete("/templates/{template_id}")
-def integration_delete_template(template_id: int):
+@router.delete(
+    "/templates/{template_id}",
+    summary="删除模板",
+    description="删除指定模板及其关联的标注、文档和审查记录。",
+)
+def integration_delete_template(
+    template_id: int = Path(..., description="模板 ID")
+):
     conn = get_connection()
     try:
         row = conn.execute(
@@ -85,8 +108,15 @@ def integration_delete_template(template_id: int):
     return {"ok": True}
 
 
-@router.get("/templates/{template_id}", response_model=TemplateDetailResponse)
-def integration_get_template(template_id: int):
+@router.get(
+    "/templates/{template_id}",
+    response_model=TemplateDetailResponse,
+    summary="获取模板详情",
+    description="返回指定模板的完整段落列表，包含下划线标注和表格单元格标记。",
+)
+def integration_get_template(
+    template_id: int = Path(..., description="模板 ID")
+):
     conn = get_connection()
     try:
         row = conn.execute(
@@ -112,8 +142,16 @@ def integration_get_template(template_id: int):
         conn.close()
 
 
-@router.post("/templates/{template_id}/annotations")
-def integration_save_annotations(template_id: int, body: AnnotationBatch):
+@router.post(
+    "/templates/{template_id}/annotations",
+    summary="保存标注区域",
+    description="为模板的指定段落保存固定区、可填充区和可变区的字符级标注。\n\n"
+                "每次调用会**全量替换**该模板的已有标注。",
+)
+def integration_save_annotations(
+    template_id: int = Path(..., description="模板 ID"),
+    body: AnnotationBatch = ...,
+):
     conn = get_connection()
     try:
         conn.execute("BEGIN")
@@ -138,8 +176,14 @@ def integration_save_annotations(template_id: int, body: AnnotationBatch):
     return {"ok": True, "count": len(body.annotations)}
 
 
-@router.get("/templates/{template_id}/annotations")
-def integration_get_annotations(template_id: int):
+@router.get(
+    "/templates/{template_id}/annotations",
+    summary="获取标注区域",
+    description="返回指定模板的所有段落标注，按段落索引和起始字符排序。",
+)
+def integration_get_annotations(
+    template_id: int = Path(..., description="模板 ID")
+):
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -162,10 +206,18 @@ def integration_get_annotations(template_id: int):
         conn.close()
 
 
-# ── Documents ──
+# ══════════════════════════════════════════════════════════════════════════════
+# 文档管理
+# ══════════════════════════════════════════════════════════════════════════════
 
-@router.get("/documents/proxy-template/{template_id}")
-async def integration_proxy_template_file(template_id: int):
+@router.get(
+    "/documents/proxy-template/{template_id}",
+    summary="代理下载模板文件",
+    description="以原始 .docx 格式返回模板文件，供主系统直接下载。",
+)
+async def integration_proxy_template_file(
+    template_id: int = Path(..., description="模板 ID")
+):
     conn = get_connection()
     row = conn.execute(
         "SELECT file_path FROM templates WHERE id = ?", (template_id,)
@@ -179,10 +231,15 @@ async def integration_proxy_template_file(template_id: int):
     )
 
 
-@router.post("/documents/upload", response_model=DocumentResponse)
+@router.post(
+    "/documents/upload",
+    response_model=DocumentResponse,
+    summary="上传待审文档",
+    description="上传待审查的 .docx 文档并关联到指定模板，解析段落结构后入库。",
+)
 async def integration_upload_document(
-    file: UploadFile = File(...),
-    template_id: int = Query(...)
+    file: UploadFile = File(..., description="待审文档 (.docx)"),
+    template_id: int = Query(..., description="关联的模板 ID"),
 ):
     if not file.filename.endswith(".docx"):
         raise HTTPException(400, "只支持 .docx 文件")
@@ -218,8 +275,15 @@ async def integration_upload_document(
     )
 
 
-@router.get("/documents/{document_id}", response_model=DocumentResponse)
-def integration_get_document(document_id: int):
+@router.get(
+    "/documents/{document_id}",
+    response_model=DocumentResponse,
+    summary="获取文档详情",
+    description="返回指定文档的完整段落列表和关联的模板 ID。",
+)
+def integration_get_document(
+    document_id: int = Path(..., description="文档 ID")
+):
     conn = get_connection()
     try:
         row = conn.execute(
@@ -246,10 +310,19 @@ def integration_get_document(document_id: int):
     )
 
 
-# ── Review ──
+# ══════════════════════════════════════════════════════════════════════════════
+# 审查执行
+# ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/review/compare")
-def integration_review_compare(body: ReviewRequest):
+@router.post(
+    "/review/compare",
+    summary="执行段落比对",
+    description="对模板和已上传文档执行逐段字符级 Diff，返回差异段列表和违规项。\n\n"
+                "填充区域内的差异会被自动忽略。",
+)
+def integration_review_compare(
+    body: ReviewRequest = ...,
+):
     result = run_compare(body.template_id, body.document_id)
     if result is None:
         raise HTTPException(404, "模板或文件不存在")
@@ -267,8 +340,19 @@ def integration_review_compare(body: ReviewRequest):
     return result
 
 
-@router.post("/review/validate")
-def integration_review_validate(body: ReviewRequest):
+@router.post(
+    "/review/validate",
+    summary="执行规则校验",
+    description="提取文档填充值并按标注规则逐字段校验，包含：\n\n"
+                "- 必填 / 字数 / 字符类型检查\n"
+                "- Checkbox 勾选联动（勾选则关联字段必填）\n"
+                "- 跨字段一致性比对（match_fields）\n"
+                "- 大小写金额匹配（amount_match_field）\n"
+                "- 单选组互斥检查（radio_group）",
+)
+def integration_review_validate(
+    body: ReviewRequest = ...,
+):
     result = run_validate(body.template_id, body.document_id)
     if result is None:
         raise HTTPException(404, "模板或文件不存在")
@@ -286,12 +370,20 @@ def integration_review_validate(body: ReviewRequest):
     return result
 
 
-@router.post("/review/full")
+@router.post(
+    "/review/full",
+    summary="执行一站式审查",
+    description="接收主系统传来的文档，在一个请求内完成上传、比对和校验，聚合结果返回。\n\n"
+                "**流程：** 上传文档 → 入库 → 段落比对 → 规则校验 → 聚合返回\n\n"
+                "**注意事项：**\n"
+                "- 文档较大时（>5MB）可能耗时 3 秒以上\n"
+                "- 推荐文件大小限制在 10MB 以内\n"
+                "- 该接口为同步模式，结果会等待全部审查完成后才返回",
+)
 async def integration_review_full(
-    template_id: int = Form(...),
-    file: UploadFile = File(...)
+    template_id: int = Form(..., description="主系统预先配置好的模板 ID"),
+    file: UploadFile = File(..., description="需要审查的原始 Word 文档 (.docx)"),
 ):
-    """One-stop review: upload document, run compare, run validate."""
     # Validate template exists
     conn = get_connection()
     try:
