@@ -129,6 +129,8 @@ function autoAnnotateUnderscores(paragraphs: ParagraphInfo[]): AnnotationItem[] 
   const result: AnnotationItem[] = []
   for (const para of paragraphs) {
     const text = para.text
+    // Table cells: skip all auto-annotation entirely
+    if (para.is_table_cell) continue
     const fillableRanges: [number, number][] = []
     // 1) underscore characters in text
     // Match 2+ underscores only — a single _ in body text (e.g. "_10000元整")
@@ -151,16 +153,7 @@ function autoAnnotateUnderscores(paragraphs: ParagraphInfo[]): AnnotationItem[] 
     while ((cb = checkboxRegex.exec(text)) !== null) {
       fillableRanges.push([cb.index, cb.index + 1])
     }
-    // 4) table cells only: trailing "：" with no fillable → zero-width fillable
-    if (para.is_table_cell && text.length > 0 && /[：:]\s*$/.test(text)) {
-      const lastFillableEnd = fillableRanges.length > 0
-        ? Math.max(...fillableRanges.map(r => r[1]))
-        : -1
-      if (lastFillableEnd < text.length) {
-        fillableRanges.push([text.length, text.length])
-      }
-    }
-    // 5) labels ending with ：/：followed by punctuation or end (no underscore fillable) → zero-width fillable
+    // 4) labels ending with ：/：followed by punctuation or end (no underscore fillable) → zero-width fillable
     //    e.g. "计费单位：，单价：____" → insert fillable between ：and ，
     const labelGapRegex = /[：:]\s*(?=[，,。\.、；;])/g
     let lg: RegExpExecArray | null

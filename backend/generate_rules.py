@@ -2,7 +2,7 @@
 
 Reads every fillable annotation, classifies the zone by analyzing the paragraph
 text context, then updates the DB with appropriate field_name, min/max_chars,
-allowed_chars, regex, and allowed_values.
+allowed_chars, and allowed_values.
 
 Run: uv run python generate_rules.py
 """
@@ -30,7 +30,6 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
         "min_chars": 0,
         "max_chars": 9999,
         "allowed_chars": "any",
-        "regex": "",
         "allowed_values": [],
         "match_fields": [],
         "radio_group": "",
@@ -225,19 +224,19 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
     m = re.match(r'^(甲方|乙方)（([^）]*)）[：:]?\s*$', tb)
     if m:
         set_field(f"{m.group(1)}名称（{m.group(2)}）",
-                  allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+                  allowed_chars="any", min_chars=2, max_chars=50)
         return R
 
     # 统一社会信用代码/身份证号 (before plain USCC)
     if re.search(r'统一社会信用代码\s*/\s*身份证号[：:]?\s*$', tb):
         set_field(f"{party}统一社会信用代码/身份证号" if party else "统一社会信用代码/身份证号",
-                  allowed_chars="alphanumeric", min_chars=15, max_chars=18)
+                  allowed_chars="any", min_chars=15, max_chars=18)
         return R
 
     # 统一社会信用代码
     if re.search(r'统一社会信用代码[：:]?\s*$', tb):
         set_field(f"{party}统一社会信用代码" if party else "统一社会信用代码",
-                  allowed_chars="alphanumeric", min_chars=18, max_chars=18)
+                  allowed_chars="any", min_chars=18, max_chars=18)
         return R
 
     # 注册地址
@@ -352,13 +351,13 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
     # 开户名称 / 账户名称 / 开户单位 / 户名
     if re.search(r'(开户名称|账户名称|开户单位|户名)[：:]\s*$', tb):
         set_field(f"{party}开户名称" if party else "开户名称",
-                  allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+                  allowed_chars="any", min_chars=2, max_chars=50)
         return R
 
     # 开户银行 / 开户行
     if re.search(r'(开户银行|开户行)[：:]\s*$', tb):
         set_field(f"{party}开户银行" if party else "开户银行",
-                  allowed_chars="alphanumeric", min_chars=4, max_chars=30)
+                  allowed_chars="any", min_chars=4, max_chars=30)
         return R
 
     # 银行账号 (before generic 账号)
@@ -376,37 +375,37 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
     # 税号
     if re.search(r'税号[：:]\s*$', tb):
         set_field(f"{party}税号" if party else "税号",
-                  allowed_chars="alphanumeric", min_chars=15, max_chars=20)
+                  allowed_chars="any", min_chars=15, max_chars=20)
         return R
 
     # 理赔款专用账户
     if "理赔款专用账户" in tb:
-        set_field("理赔款专用账户信息", allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+        set_field("理赔款专用账户信息", allowed_chars="any", min_chars=2, max_chars=50)
         return R
 
     # 保险产品类型 (check BEFORE 合作范围 since both can appear in same paragraph)
     if "保险产品类型包括" in tb:
-        set_field("保险产品类型", allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+        set_field("保险产品类型", allowed_chars="any", min_chars=2, max_chars=50)
         return R
 
     # 合作范围 (first blank in that paragraph)
     if "合作范围为" in tb:
-        set_field("合作范围", allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+        set_field("合作范围", allowed_chars="any", min_chars=2, max_chars=50)
         return R
 
     # 委托咨询事宜
     if re.search(r'甲方委托乙方就\s*$', tb):
-        set_field("咨询服务事项", allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+        set_field("咨询服务事项", allowed_chars="any", min_chars=2, max_chars=50)
         return R
 
     # 服务区域
     if re.search(r'服务区域[为：:]\s*$', tb):
-        set_field("服务区域", allowed_chars="alphanumeric", min_chars=2, max_chars=20)
+        set_field("服务区域", allowed_chars="any", min_chars=2, max_chars=20)
         return R
 
     # 车辆使用范围
     if re.search(r'(车辆)?使用范围[：:]\s*$', tb):
-        set_field("车辆使用范围", allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+        set_field("车辆使用范围", allowed_chars="any", min_chars=2, max_chars=50)
         return R
 
     # =================================================================
@@ -507,7 +506,7 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
 
     # 大写
     if re.search(r'大写[）)]?\s*[：:]?\s*$', tb[-10:]):
-        set_field("金额大写", allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+        set_field("金额大写", allowed_chars="any", min_chars=2, max_chars=50)
         return R
 
     # 小写 or ¥
@@ -517,7 +516,7 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
 
     # 合计大写/小写
     if "人民币（大写）" in tb[-20:]:
-        set_field("合计金额（大写）", allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+        set_field("合计金额（大写）", allowed_chars="any", min_chars=2, max_chars=50)
         return R
     if "（小写）" in tb[-20:] and "¥" in tb:
         set_field("合计金额（小写）", allowed_chars="number", min_chars=1, max_chars=12)
@@ -527,32 +526,32 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
     # VEHICLE FIELDS
     # =================================================================
     if re.search(r'车辆品牌[：:]\s*$', tb):
-        set_field("车辆品牌", allowed_chars="alphanumeric", min_chars=1, max_chars=20)
+        set_field("车辆品牌", allowed_chars="any", min_chars=1, max_chars=20)
         return R
     if re.search(r'车型规格[：:]\s*$', tb):
-        set_field("车型规格", allowed_chars="alphanumeric", min_chars=1, max_chars=30)
+        set_field("车型规格", allowed_chars="any", min_chars=1, max_chars=30)
         return R
     if re.search(r'车牌号[码]?[：:]\s*$', tb):
-        set_field("车牌号码", allowed_chars="alphanumeric", min_chars=7, max_chars=10)
+        set_field("车牌号码", allowed_chars="any", min_chars=7, max_chars=10)
         return R
     if re.search(r'车架号[码]?[：:]\s*$', tb):
-        set_field("车架号码", allowed_chars="alphanumeric", min_chars=17, max_chars=17)
+        set_field("车架号码", allowed_chars="any", min_chars=17, max_chars=17)
         return R
     if re.search(r'车辆颜色[：:]\s*$', tb):
         set_field("车辆颜色", allowed_chars="chinese", min_chars=1, max_chars=10)
         return R
     if re.search(r'车辆状况[：:]\s*$', tb):
-        set_field("车辆状况", allowed_chars="alphanumeric", min_chars=1, max_chars=20)
+        set_field("车辆状况", allowed_chars="any", min_chars=1, max_chars=20)
         return R
 
     # =================================================================
     # SERVICE ITEM TABLE FIELDS (网络推广 / 汽车 / 咨询)
     # =================================================================
     if re.search(r'服务项目[：:]\s*$', tb) or re.search(r'服务项目_*$', tb):
-        set_field("服务项目名称", allowed_chars="alphanumeric", min_chars=1, max_chars=30)
+        set_field("服务项目名称", allowed_chars="any", min_chars=1, max_chars=30)
         return R
     if re.search(r'服务类别[：:]\s*$', tb):
-        set_field("服务类别", allowed_chars="alphanumeric", min_chars=1, max_chars=20)
+        set_field("服务类别", allowed_chars="any", min_chars=1, max_chars=20)
         return R
     if re.search(r'服务内容说明[：:]\s*$', tb):
         set_field("服务内容说明", allowed_chars="any", min_chars=1, max_chars=100)
@@ -576,7 +575,7 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
 
     # 服务范围 (generic, after service content)
     if re.search(r'服务范围[：:]\s*$', tb):
-        set_field("服务范围", allowed_chars="alphanumeric", min_chars=2, max_chars=30)
+        set_field("服务范围", allowed_chars="any", min_chars=2, max_chars=30)
         return R
 
     # 服务效果考核指标
@@ -719,7 +718,7 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
 
     # 进度款阶段名称
     if "进度款" in tb[-20:] and re.search(r'[：:]\s*$', tb[-3:]):
-        set_field("进度款阶段名称", allowed_chars="alphanumeric", min_chars=2, max_chars=30)
+        set_field("进度款阶段名称", allowed_chars="any", min_chars=2, max_chars=30)
         return R
 
     # 预付款金额
@@ -767,7 +766,7 @@ def classify(text_before, text_after, full_text, paragraph_index, is_table_cell,
         clean = labels[-1].strip().rstrip(",，;；")
         # Apply basic rules based on the label
         if "名称" in clean:
-            set_field(clean, allowed_chars="alphanumeric", min_chars=2, max_chars=50)
+            set_field(clean, allowed_chars="any", min_chars=2, max_chars=50)
         elif "电话" in clean:
             set_field(clean, allowed_chars="number", min_chars=7, max_chars=13)
         elif "金额" in clean or "单价" in clean or "费用" in clean:
@@ -922,7 +921,6 @@ def main():
                   f"len=[{R['min_chars']},{R['max_chars']}] "
                   f"req={R['required']} "
                   f"val={R.get('allowed_values',[])} "
-                  f"regex={R.get('regex','')[:30]} "
                   f"zone='{zone_label[:20]}'")
 
             conn.execute(

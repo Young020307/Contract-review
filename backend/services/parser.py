@@ -176,12 +176,27 @@ class DocxParser:
                 mapping[pi] = None
 
         # ── Pass 2: positional fallback for deferred paragraphs ──
-        remaining_docs = [j for j in range(len(doc_texts)) if j not in used_docs]
-        for pi in deferred:
-            if remaining_docs:
-                doc_j = remaining_docs.pop(0)
-                mapping[pi] = doc_j
-                used_docs.add(doc_j)
+        # Match each deferred paragraph to the nearest unused document
+        # paragraph after its preceding matched template paragraph, so that
+        # deferred paragraphs from different sections don't cross-match.
+        remaining_docs = sorted([j for j in range(len(doc_texts)) if j not in used_docs])
+        for pi in sorted(deferred):
+            prev_doc = None
+            for tpl_idx in sorted(mapping.keys(), reverse=True):
+                if tpl_idx < pi and mapping[tpl_idx] is not None:
+                    prev_doc = mapping[tpl_idx]
+                    break
+
+            found = None
+            for j in remaining_docs:
+                if prev_doc is None or j > prev_doc:
+                    found = j
+                    break
+
+            if found is not None:
+                mapping[pi] = found
+                used_docs.add(found)
+                remaining_docs.remove(found)
             else:
                 mapping[pi] = None
 

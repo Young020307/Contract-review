@@ -60,12 +60,7 @@
               <el-option label="不限制" value="any" />
               <el-option label="仅中文" value="chinese" />
               <el-option label="仅数字" value="number" />
-              <el-option label="字母/数字/中文" value="alphanumeric" />
-              <el-option label="正则表达式" value="regex" />
             </el-select>
-          </el-form-item>
-          <el-form-item v-if="rules.allowed_chars === 'regex'" label="正则">
-            <el-input v-model="rules.regex" placeholder="如: ^1[3-9]\d{9}$" />
           </el-form-item>
           <div class="av-block">
             <span class="av-label">允许值</span>
@@ -222,7 +217,7 @@ const availableMatchFields = computed(() => {
 
 const rules = ref<ValidationRule>({
   required: true, min_chars: 1, max_chars: 200,
-  allowed_chars: 'any', regex: '', field_name: '',
+  allowed_chars: 'any', field_name: '',
   allowed_values: [], match_fields: [],
   radio_group: '',
   dependent_paras: [],
@@ -252,11 +247,11 @@ watch(() => props.clickedAnnotation, (val) => {
     )
     if (ann?.rules) {
       rules.value = Object.assign(
-        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
+        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
         ann.rules
       )
     } else {
-      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
+      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
     }
     editingAnnotation.value = { paraIndex: val.paraIndex, startChar: val.startChar }
     showFillableRules.value = true
@@ -302,11 +297,11 @@ function editClickedAnnotation() {
   )
   if (ann?.rules) {
     rules.value = Object.assign(
-      { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
+      { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
       ann.rules
     )
   } else {
-    rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
+    rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
   }
   editingAnnotation.value = { paraIndex: props.clickedAnnotation.paraIndex, startChar: props.clickedAnnotation.startChar }
   showFillableRules.value = true
@@ -346,11 +341,11 @@ function handleAnnItemClick(a: AnnotationItem) {
   if (a.zone_type === 'fillable') {
     if (a.rules) {
       rules.value = Object.assign(
-        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
+        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
         a.rules
       )
     } else {
-      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', regex: '', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
+      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
     }
     editingAnnotation.value = { paraIndex: a.paragraph_index, startChar: a.start_char }
     showFillableRules.value = true

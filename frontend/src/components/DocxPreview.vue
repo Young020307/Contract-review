@@ -76,6 +76,17 @@ watch(() => props.focusedZone, () => { updateZoneFocus() })
 function buildAnnotatedHTML(mammothHTML: string): string {
   const parser = new DOMParser()
   const dom = parser.parseFromString(mammothHTML, 'text/html')
+  // Convert list items to <p> so they are included in paragraph processing.
+  // Mammoth renders numbered paragraphs (those with w:numPr) as <ol><li>,
+  // which querySelectorAll('p') would miss, causing index misalignment.
+  dom.querySelectorAll('ol, ul').forEach(list => {
+    list.querySelectorAll('li').forEach(li => {
+      const p = dom.createElement('p')
+      p.textContent = li.textContent
+      list.parentNode!.insertBefore(p, list)
+    })
+    list.remove()
+  })
   const paragraphs = dom.querySelectorAll('p')
 
   paragraphs.forEach((p, i) => {

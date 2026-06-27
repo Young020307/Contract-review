@@ -99,6 +99,7 @@ async function handleUpload(file: File) {
   padding: var(--space-6) var(--space-8);
   max-width: 1100px;
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .page-head {
@@ -125,18 +126,23 @@ async function handleUpload(file: File) {
 }
 
 .table-card {
+  flex: 1;
+  min-height: 0;
   background: var(--paper-white);
   border: 1px solid var(--rule);
   border-radius: var(--radius-md);
   overflow: hidden;
   box-shadow: var(--shadow-md);
   transition: box-shadow var(--transition-base);
+  display: flex;
+  flex-direction: column;
 }
 .table-card:hover {
   box-shadow: var(--shadow-lg);
 }
 
-.table-card :deep(.el-table) { border: none; font-size: 15px; }
+.table-card :deep(.el-table) { border: none; font-size: 15px; height: 100%; }
+.table-card :deep(.el-table__inner-wrapper) { height: 100%; }
 .table-card :deep(.el-table td) { padding: 16px 0; }
 .table-card :deep(.el-table th) { padding: 16px 0; font-size: 15px; }
 .table-card :deep(.el-table::before) { display: none; }

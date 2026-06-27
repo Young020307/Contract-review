@@ -23,8 +23,7 @@ export interface ValidationRule {
   required: boolean
   min_chars: number
   max_chars: number
-  allowed_chars: 'chinese' | 'number' | 'alphanumeric' | 'any' | 'regex'
-  regex: string
+  allowed_chars: 'chinese' | 'number' | 'any'
   field_name: string
   allowed_values: string[]
   match_fields: string[]
