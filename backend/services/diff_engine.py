@@ -179,7 +179,8 @@ class DiffEngine:
     def compare_aligned(tpl_paras: list[dict], doc_paras: list[dict],
                         para_map: dict[int, int | None], inserted: list[int],
                         fillable_by_para: dict[int, list[tuple[int, int]]],
-                        absorbed: dict[int, list[int]] | None = None) -> dict:
+                        absorbed: dict[int, list[int]] | None = None,
+                        optional_missing: set[int] | None = None) -> dict:
         """Per-paragraph diff using paragraph alignment.
 
         Diffs each matched paragraph pair independently so that paragraph
@@ -222,6 +223,10 @@ class DiffEngine:
                 diffs.extend(para_diffs)
                 violations.extend(para_violations)
             else:
+                if optional_missing and pi in optional_missing:
+                    # Entirely-fillable non-required paragraph with no counterpart
+                    # in the document — treat as omitted, not deleted
+                    continue
                 # Paragraph deleted entirely
                 doc_pos = _find_doc_position_after(pi, para_map, doc_start, doc_paras)
                 diffs.append({

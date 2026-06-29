@@ -151,13 +151,15 @@ def run_compare(template_id: int, document_id: int) -> dict | None:
             template_paras, doc_paras,
             alignment["mapping"], alignment["inserted"],
             fillable_by_para,
-            absorbed=alignment.get("absorbed")
+            absorbed=alignment.get("absorbed"),
+            optional_missing=alignment.get("optional_missing")
         )
         result["template_text"] = DocxParser.extract_full_text(template_path)
         result["document_text"] = DocxParser.extract_full_text(doc_path)
         result["paragraph_mapping"] = alignment["mapping"]
         result["inserted_paragraphs"] = alignment["inserted"]
         result["absorbed"] = alignment.get("absorbed", {})
+        result["optional_missing"] = list(alignment.get("optional_missing", set()))
 
         # ── Keyword scan ──
         _scan_keywords(result, doc_paras, alignment["mapping"])
@@ -348,6 +350,7 @@ def run_validate(template_id: int, document_id: int) -> dict | None:
         result["paragraph_mapping"] = alignment["mapping"]
         result["inserted_paragraphs"] = alignment["inserted"]
         result["absorbed"] = alignment.get("absorbed", {})
+        result["optional_missing"] = list(alignment.get("optional_missing", set()))
         return result
     finally:
         conn.close()

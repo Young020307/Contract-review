@@ -183,7 +183,10 @@ class DocxParser:
         segments) and uses it as a search pattern to find the corresponding document
         paragraph. No similarity thresholds — matching is deterministic.
 
-        Returns {"mapping": {tpl_idx: doc_idx|None}, "inserted": [doc_idx, ...]}
+        Returns {"mapping": {tpl_idx: doc_idx|None}, "inserted": [doc_idx, ...],
+                 "optional_missing": set(tpl_idx)}
+        where optional_missing are entirely-fillable non-required paragraphs that
+        have no counterpart in the document and should NOT be reported as deleted.
         """
         ann_by_para: dict[int, list[dict]] = {}
         for a in annotations:
@@ -191,10 +194,54 @@ class DocxParser:
                 continue
             ann_by_para.setdefault(a["paragraph_index"], []).append(a)
 
+        # Identify entirely-fillable paragraphs where all fillable zones are optional
+        optional_by_para: set[int] = set()
+        for pi, anns in ann_by_para.items():
+            # Para text is needed to check if fixed segments exist
+            tpl_text = None
+            for p in tpl_paras:
+                if p["index"] == pi:
+                    tpl_text = p["text"]
+                    break
+            if tpl_text is None:
+                continue
+            ranges = sorted(
+                [(a["start_char"], a["end_char"]) for a in anns],
+                key=lambda r: r[0])
+            fixed_segments = []
+            pos = 0
+            for s, e in ranges:
+                s = max(0, min(s, len(tpl_text)))
+                e = max(s, min(e, len(tpl_text)))
+                if pos < s:
+                    fixed_segments.append(tpl_text[pos:s])
+                pos = max(pos, e)
+            if pos < len(tpl_text):
+                fixed_segments.append(tpl_text[pos:])
+
+            # Only entirely-fillable paragraphs (no fixed segments) can be optional
+            if fixed_segments:
+                continue
+            # Check that NO fillable zone is required
+            all_optional = True
+            for a in anns:
+                rules = a.get("rules", {})
+                if isinstance(rules, str):
+                    try:
+                        rules = json.loads(rules)
+                    except (json.JSONDecodeError, TypeError):
+                        rules = {}
+                if rules.get("required"):
+                    all_optional = False
+                    break
+            if all_optional:
+                optional_by_para.add(pi)
+
         doc_texts = [p["text"] for p in doc_paras]
         used_docs: set[int] = set()
         mapping: dict[int, int | None] = {}
         deferred: list[int] = []  # tpl indices that need positional fallback
+        optional_missing: set[int] = set()
 
         # ── Pass 1: high-confidence matches ──
         for p in tpl_paras:
@@ -294,6 +341,8 @@ class DocxParser:
                 used_docs.add(found)
                 remaining_docs.remove(found)
             else:
+                if pi in optional_by_para:
+                    optional_missing.add(pi)
                 mapping[pi] = None
 
         inserted = sorted(
@@ -332,7 +381,8 @@ class DocxParser:
             else:
                 still_inserted.append(doc_i)
 
-        return {"mapping": mapping, "inserted": still_inserted, "absorbed": absorbed}
+        return {"mapping": mapping, "inserted": still_inserted, "absorbed": absorbed,
+                "optional_missing": optional_missing}
 
     @staticmethod
     def extract_fillable_values(template_file_path: str, doc_file_path: str, annotations: list[dict]) -> dict:

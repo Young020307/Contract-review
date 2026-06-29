@@ -90,6 +90,7 @@ export interface CompareResult {
   inserted_paragraphs?: number[]
   absorbed?: Record<number, number[]>
   keyword_matches?: KeywordMatch[]
+  optional_missing?: number[]
 }
 
 export interface FieldResult {
@@ -112,4 +113,5 @@ export interface ValidateResult {
   paragraph_mapping?: Record<number, number | null>
   inserted_paragraphs?: number[]
   absorbed?: Record<number, number[]>
+  optional_missing?: number[]
 }

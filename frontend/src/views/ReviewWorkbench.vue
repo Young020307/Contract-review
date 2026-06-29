@@ -393,6 +393,8 @@ const displayItems = computed(() => {
       revMap[di] = Number(tplStr)
     }
   }
+  // Entirely-fillable non-required paragraphs that don't exist in the document
+  const optionalMissing = new Set(validateResult.value?.optional_missing ?? compareResult.value?.optional_missing ?? [])
   const items: Array<
     { key: string; type: 'para'; para: typeof renderedParagraphs.value[0] }
     | { key: string; type: 'placeholder'; templateIndex: number }
@@ -402,7 +404,9 @@ const displayItems = computed(() => {
     const tplIdx = revMap[p.index]
     if (tplIdx !== undefined) {
       for (let d = lastTpl + 1; d < tplIdx; d++) {
-        items.push({ key: `del-${d}`, type: 'placeholder', templateIndex: d })
+        if (!optionalMissing.has(d)) {
+          items.push({ key: `del-${d}`, type: 'placeholder', templateIndex: d })
+        }
       }
       lastTpl = tplIdx
     }
@@ -412,7 +416,9 @@ const displayItems = computed(() => {
   const tplCount = validateResult.value?.template_paragraphs?.length
     ?? activeTemplateParagraphCount.value
   for (let d = lastTpl + 1; d < tplCount; d++) {
-    items.push({ key: `del-${d}`, type: 'placeholder', templateIndex: d })
+    if (!optionalMissing.has(d)) {
+      items.push({ key: `del-${d}`, type: 'placeholder', templateIndex: d })
+    }
   }
   return items
 })
