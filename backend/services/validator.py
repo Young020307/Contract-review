@@ -147,7 +147,8 @@ class RuleValidator:
             allowed = rules.get("allowed_chars", "any")
             if allowed in RuleValidator.CHAR_PATTERNS:
                 pattern = RuleValidator.CHAR_PATTERNS[allowed]
-                if not pattern.match(actual_value):
+                check_value = actual_value.replace(",", "") if allowed == "number" else actual_value
+                if not pattern.match(check_value):
                     field_result["pass"] = False
                     field_result["reason"] = f"字符类型不符：要求{allowed}"
 
@@ -245,9 +246,10 @@ class RuleValidator:
                 amount_unit, f"×{amount_unit}"
             )
 
-            # Parse Arabic side
+            # Parse Arabic side (strip commas from formatted numbers like 500,000)
             try:
-                arabic_num = int(field_result["actual_value"].strip().strip("_ "))
+                raw_value = field_result["actual_value"].strip().strip("_ ").replace(",", "")
+                arabic_num = int(raw_value)
             except ValueError:
                 field_result["pass"] = False
                 field_result["reason"] = f"金额「{field_result['actual_value']}」不是有效数字"
