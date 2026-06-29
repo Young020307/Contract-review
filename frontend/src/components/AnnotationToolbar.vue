@@ -225,6 +225,36 @@ const rules = ref<ValidationRule>({
   amount_unit: 1
 })
 
+function loadRules(source: ValidationRule | null | undefined): ValidationRule {
+  const defaults: ValidationRule = {
+    required: true, min_chars: 1, max_chars: 200,
+    allowed_chars: 'any', field_name: '',
+    allowed_values: [],
+    match_fields: [],
+    radio_group: '',
+    dependent_paras: [],
+    amount_match_field: '',
+    amount_unit: 1
+  }
+  if (!source) return defaults
+  return {
+    ...defaults,
+    ...source,
+    allowed_values: source.allowed_values ? [...source.allowed_values] : [],
+    match_fields: source.match_fields ? [...source.match_fields] : [],
+    dependent_paras: source.dependent_paras ? [...source.dependent_paras] : []
+  }
+}
+
+function cloneRules(r: ValidationRule): ValidationRule {
+  return {
+    ...r,
+    allowed_values: r.allowed_values ? [...r.allowed_values] : [],
+    match_fields: r.match_fields ? [...r.match_fields] : [],
+    dependent_paras: r.dependent_paras ? [...r.dependent_paras] : []
+  }
+}
+
 const annRefs = ref<Record<string, HTMLElement>>({})
 function setAnnRef(paraIndex: number, startChar: number, el: any) {
   if (el) annRefs.value[`${paraIndex}_${startChar}`] = el
@@ -245,14 +275,7 @@ watch(() => props.clickedAnnotation, (val) => {
     const ann = props.annotations.find(
       a => a.paragraph_index === val.paraIndex && a.start_char === val.startChar
     )
-    if (ann?.rules) {
-      rules.value = Object.assign(
-        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
-        ann.rules
-      )
-    } else {
-      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
-    }
+    rules.value = loadRules(ann?.rules)
     editingAnnotation.value = { paraIndex: val.paraIndex, startChar: val.startChar }
     showFillableRules.value = true
   }
@@ -265,6 +288,7 @@ function mark(zone: 'fixed' | 'fillable' | 'variable') {
   if (props.selectedStart === null || props.selectedEnd === null) return
   editingAnnotation.value = null
   if (zone === 'fillable') {
+    rules.value = loadRules(null)
     showFillableRules.value = true
     return
   }
@@ -279,6 +303,7 @@ function mark(zone: 'fixed' | 'fillable' | 'variable') {
 function markWholePara(zone: 'fixed' | 'fillable' | 'variable') {
   if (props.currentParagraph === null) return
   if (zone === 'fillable') {
+    rules.value = loadRules(null)
     showFillableRules.value = true
     return
   }
@@ -296,12 +321,9 @@ function editClickedAnnotation() {
     a => a.paragraph_index === props.clickedAnnotation!.paraIndex && a.start_char === props.clickedAnnotation!.startChar
   )
   if (ann?.rules) {
-    rules.value = Object.assign(
-      { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
-      ann.rules
-    )
+    rules.value = loadRules(ann.rules)
   } else {
-    rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
+    rules.value = loadRules(null)
   }
   editingAnnotation.value = { paraIndex: props.clickedAnnotation.paraIndex, startChar: props.clickedAnnotation.startChar }
   showFillableRules.value = true
@@ -318,7 +340,7 @@ function confirmFillable() {
       a => a.paragraph_index === editingAnnotation.value!.paraIndex && a.start_char === editingAnnotation.value!.startChar
     )
     if (ann) {
-      emit('updateAnnotation', { ...ann, rules: { ...rules.value } })
+      emit('updateAnnotation', { ...ann, rules: cloneRules(rules.value) })
     }
     editingAnnotation.value = null
   } else {
@@ -329,7 +351,7 @@ function confirmFillable() {
       start_char: props.selectedStart,
       end_char: props.selectedEnd,
       zone_type: 'fillable',
-      rules: { ...rules.value }
+      rules: cloneRules(rules.value)
     })
   }
   showFillableRules.value = false
@@ -339,14 +361,7 @@ function handleAnnItemClick(a: AnnotationItem) {
   emit('selectPara', a.paragraph_index)
   emit('focusAnnotation', a.paragraph_index, a.start_char)
   if (a.zone_type === 'fillable') {
-    if (a.rules) {
-      rules.value = Object.assign(
-        { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 },
-        a.rules
-      )
-    } else {
-      rules.value = { required: true, min_chars: 1, max_chars: 200, allowed_chars: 'any', field_name: '', allowed_values: [], match_fields: [], radio_group: '', dependent_paras: [], amount_match_field: '', amount_unit: 1 }
-    }
+    rules.value = loadRules(a.rules)
     editingAnnotation.value = { paraIndex: a.paragraph_index, startChar: a.start_char }
     showFillableRules.value = true
   }
